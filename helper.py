@@ -1,6 +1,10 @@
 # imports
 import pm4py
 import json
+import os
+
+from opyenxes.data_in import XesXmlParser
+from opyenxes.data_out import XesXmlSerializer
 
 def get_log(dataset_name):
     """Get the event log for a specified dataset.
@@ -18,6 +22,44 @@ def get_log(dataset_name):
         return log
     
     return None
+
+def opyenxes_read_xes(data_file_path, multiple_logs=False):
+    """Reads an XES event log with opyenxes.
+    
+    Args:
+        data_file_path: Path to data file.
+        multiple_logs: Set to true if the XES file contains multiple logs.
+    
+    Return:
+        opyenxes event log(s)
+    """
+    opyenxes_xes_parser = XesXmlParser.XesXmlParser()
+    
+    with open(data_file_path) as data_file:
+        opyenxes_logs = opyenxes_xes_parser.parse(data_file)
+    
+    if multiple_logs:
+        return opyenxes_logs
+    else:
+        return opyenxes_logs[0]
+    
+def opyenxes_write_xes(log, data_file_path):
+    """Writes an XES event log with opyenxes.
+    
+    Args:
+        data_file_path: Path to data file.
+         
+    """
+    opyenxes_xes_serializer = XesXmlSerializer.XesXmlSerializer()
+    
+    # create path if doesn't exist
+    if not os.path.exists(os.path.dirname(data_file_path)):
+        # Create a new directory because it does not exist 
+        os.makedirs(os.path.dirname(data_file_path))
+    
+    opyenxes_logs = None
+    with open(data_file_path, 'w') as data_file:
+        opyenxes_xes_serializer.serialize(log, data_file)
 
 def update_data_dictionary(data_dictionary, data_dict_file_path='data/data_dict.json'):
     """Extend exisitng data dictionary with given data dictionary. 
@@ -73,3 +115,33 @@ def get_datasets_by_criteria(data_dict_file_path='data/data_dict.json', file_pat
         if all(evaluations):
             filtered_dictionary[index] = data_info
     return filtered_dictionary
+
+def create_and_get_new_path(old_file_path, old_base_path, new_base_path, new_extension=None):
+    """Get a new file path. Also creates all folder for this path.
+    
+    Args:
+        old_file_path: Previous path to file.
+        old_base_path: Previous base path of data folder.
+        new_base_path: New base directory.
+        new_extension: Optional: New extension of file path. (E.g., .XES)
+    
+    Returns: New file path.
+    """
+    # get file path only from after the old_base_path
+    rel_path = os.path.relpath(old_file_path, old_base_path)
+    new_path = os.path.normpath(os.path.join(new_base_path, rel_path))
+    
+    if new_extension is not None:
+        file_name, extension = os.path.splitext(new_path)
+        new_path = file_name + new_extension
+
+    # create path if not exists
+    # create to_path if not existing
+    if not os.path.exists(os.path.dirname(new_path)):
+        # Create a new directory because it does not exist 
+        os.makedirs(os.path.dirname(new_path))
+    
+    # cleanup path
+    new_path = os.path.normpath(new_path)
+    
+    return new_path
