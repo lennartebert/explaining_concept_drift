@@ -98,7 +98,7 @@ class AttributeGenerator:
     def generate_continuous_attribute(self, attribute_name, min_value, max_value):
         pass
     
-    def _generate_categorical_data(self, count_attribute_values, noise_level):
+    def _generate_categorical_data(self, count_attribute_values):
         attribute_value_candidates = [f'value_{attribute_number + 1}' for attribute_number in range(count_attribute_values)]
         
         # assing a static percentage of category occurences
@@ -131,18 +131,18 @@ class AttributeGenerator:
                                        explain_change_points=None, 
                                        change_location_standard_deviation=10,
                                        drift_type='sudden', attribute_level='trace', 
-                                       noise_level='none', concept_change='oversampling', 
+                                       noise_level=0, concept_change='oversampling', 
                                        data_stationarity='stationary'):
         # if explain_change_points is set to None, explain all no change points
         
         # generate the baseline data
-        attribute_data = self._generate_categorical_data(count_attribute_values, noise_level)
+        attribute_data = self._generate_categorical_data(count_attribute_values)
         
         if explain_change_points != None:
             # generate the changed attribute data
             drift_data = []
             for attribute_change in range(len(explain_change_points)):
-                new_drift_data = self._generate_categorical_data(count_attribute_values, noise_level)
+                new_drift_data = self._generate_categorical_data(count_attribute_values)
                 drift_data.append(new_drift_data)
             
             # determine the attribute change points
@@ -157,8 +157,23 @@ class AttributeGenerator:
                 change_point_info['attribute_name'] = attribute_name
                 change_point_info['drift_type'] = drift_type
                 change_point_info['drift_location'] = attribute_change_point
-
+                
                 self.change_point_explanations[explain_change_point].append(change_point_info)
+        
+        # add categorical noise by replacing x% of values with yet another distribution
+        if noise_level != 0:
+            # sample a new distribution
+            noise_data = self._generate_categorical_data(count_attribute_values)
+            
+            replace_values = np.random.choice([False, True], size=len(attribute_data), replace=True, p=[1-noise_level, noise_level])
+            
+            attribute_data_np = np.array(attribute_data)
+            noise_data_np = np.array(noise_data)
+                                     
+            attribute_data_np[replace_values] = noise_data_np[replace_values]
+            
+            # convert back to standard python array
+            attribute_data = attribute_data_np.tolist()
         
         # write change into log
         self._write_attribute_into_log(attribute_name, attribute_data, attribute_level)

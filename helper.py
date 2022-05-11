@@ -94,6 +94,26 @@ def get_data_dictionary(data_dict_file_path='data/data_dict.json'):
     data_dictionary = json.load(open(data_dict_file_path))
     return data_dictionary
 
+def get_data_information(data_file_path, data_dict_file_path='data/data_dict.json'):
+    """Get the data information for a given data file path.
+    
+    Args:
+        data_file_path: Path to data file.
+        data_dict_path: Path to data dictionary.
+    
+    Returns:
+        Data information as Python dict.
+    """
+    # read data dictionary
+    data_dictionary = json.load(open(data_dict_file_path))
+    
+    # clean the data file path
+    data_file_path = os.path.normpath(data_file_path)
+    
+    # get the data information
+    data_information = data_dictionary[data_file_path]
+    return data_information
+
 def get_datasets_by_criteria(data_dict_file_path='data/data_dict.json', file_path=None, file_name=None, drift_type=None, dataset=None, size=None, is_synthetic=None, has_generated_attributes=None):
     """Get all datasets that match all of the given criteria."""
     data_dictionary = get_data_dictionary(data_dict_file_path=data_dict_file_path)
