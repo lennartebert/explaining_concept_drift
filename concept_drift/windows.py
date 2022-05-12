@@ -48,7 +48,7 @@ def get_log_windows(log, window_size, window_offset=None, slide_by=None, start=N
     window_b_start = window_a_start + window_offset
     window_b_end = window_b_start + window_size
 
-    windows = []
+    windows = {}
 
     while(window_b_end <= end):
         window_a = None
@@ -69,7 +69,7 @@ def get_log_windows(log, window_size, window_offset=None, slide_by=None, start=N
             window_a = log[window_a_start:window_a_end+1]
             window_b = log[window_b_start:window_b_end+1]
 
-        windows.append((window_a_start, (window_a, window_b)))
+        windows[window_a_start] = (window_a, window_b)
 
         window_a_start = window_a_start + slide_by
         window_a_end = window_a_start + window_size

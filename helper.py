@@ -2,9 +2,44 @@
 import pm4py
 import json
 import os
+import pandas as pd
+import numpy as np
 
 from opyenxes.data_in import XesXmlParser
 from opyenxes.data_out import XesXmlSerializer
+
+def get_trace_attributes(log):
+    """Get the trace level attributes from a log.
+    
+    TODO: implement get event attributes
+    
+    Args:
+        log: A pm4py Eventlog
+    
+    Returns:
+        A dictionary with the attribute name as key and series with trace attributes.
+    """
+    # get all trace attributes as one dataframe
+    trace_attributes = {}
+    for i, trace in enumerate(log):
+        trace_attributes[i] = trace.attributes
+    
+    trace_attribute_df = pd.DataFrame().from_dict(trace_attributes, orient='index')
+    
+    # than convert the attributes back to a dictionary of series
+    attributes_dict = {}
+    for column_name in trace_attribute_df.columns:
+        attribute_series = trace_attribute_df[column_name]
+        
+        # the type of each attribute should either be string or Numeric
+        is_numeric = np.issubdtype(attribute_series.dtype, np.number)
+        # if type is not numeric, convert to string
+        if not is_numeric:
+            attribute_series = attribute_series.astype('category')
+            
+        attributes_dict[column_name] = attribute_series
+    
+    return attributes_dict
 
 def get_log(dataset_name):
     """Get the event log for a specified dataset.
