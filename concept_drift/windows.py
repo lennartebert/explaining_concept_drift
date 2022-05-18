@@ -5,7 +5,6 @@ from pm4py.objects.log.obj import EventStream
 import datetime
 from pm4py.algo.filtering.log.timestamp import timestamp_filter
 
-
 def get_log_windows(log, window_size, window_offset=None, slide_by=None, start=None, end=None, inclusion_criteria='events', type=None):
     """Cut a pm4py event log into windows.
 
@@ -32,9 +31,9 @@ def get_log_windows(log, window_size, window_offset=None, slide_by=None, start=N
     if window_offset == None:
         window_offset = window_size
 
-    # set slide_by to window_size if it is not defined
+    # set slide_by to 1 if it is not defined
     if slide_by == None:
-        slide_by = window_size
+        slide_by = 1
 
     if start == None:
         if type == 'traces': start = 0
@@ -44,13 +43,19 @@ def get_log_windows(log, window_size, window_offset=None, slide_by=None, start=N
         elif type == 'time': end = log[-1][-1]['time:timestamp'].replace(tzinfo=None)
 
     window_a_start = start
-    window_a_end = window_a_start + window_size
+    window_a_end = window_a_start + window_size - 1
     window_b_start = window_a_start + window_offset
-    window_b_end = window_b_start + window_size
+    window_b_end = window_b_start + window_size - 1
 
     windows = {}
 
     while(window_b_end <= end):
+        
+        # print(f"Window a start: {window_a_start}")
+        # print(f"Window a end: {window_a_end}")
+        # print(f"Window b start: {window_b_start}")
+        # print(f"Window b end: {window_b_end}")
+        
         window_a = None
         window_b = None
 
@@ -72,8 +77,8 @@ def get_log_windows(log, window_size, window_offset=None, slide_by=None, start=N
         windows[window_a_start] = (window_a, window_b)
 
         window_a_start = window_a_start + slide_by
-        window_a_end = window_a_start + window_size
+        window_a_end = window_a_start + window_size - 1
         window_b_start = window_a_start + window_offset
-        window_b_end = window_b_start + window_size
-    
+        window_b_end = window_b_start + window_size -1 
+            
     return windows

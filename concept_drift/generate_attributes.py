@@ -95,7 +95,13 @@ class AttributeGenerator:
     def _generate_attribute(self):
         pass
     
-    def generate_continuous_attribute(self, attribute_name, min_value, max_value):
+    def generate_continuous_attribute(self, attribute_name, baseline_distribution,
+                                      baseline_noise, explain_change_points=None,
+                                       change_location_standard_deviation=10,
+                                       drift_type='sudden', attribute_level='trace', 
+                                       noise_level=0, concept_change='oversampling', 
+                                       data_stationarity='stationary'):
+        
         pass
     
     def _generate_categorical_data(self, count_attribute_values):
@@ -157,7 +163,6 @@ class AttributeGenerator:
                 change_point_info['attribute_name'] = attribute_name
                 change_point_info['drift_type'] = drift_type
                 change_point_info['drift_location'] = attribute_change_point
-                
                 self.change_point_explanations[explain_change_point].append(change_point_info)
         
         # add categorical noise by replacing x% of values with yet another distribution

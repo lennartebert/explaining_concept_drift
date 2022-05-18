@@ -47,12 +47,31 @@ def test_chi_squared(series_1, series_2):
     if _all_equal(series_1, series_2): return 1
     if _all_dissimilar(series_1, series_2): return 0
     
+    # series_1 and series 2 need to have the same number of samples for chi_square to work
+    # We test for this criteria, handle it and return a message to the user if this is not the case.
+    length_series_1 = len(series_1)
+    length_series_2 = len(series_2)
+    if length_series_1 != length_series_2:
+        print(f"series_1 and series_2 do not have the same number of samples: {length_series_1} and {length_series_2}! We'll handle it by undersampling the series with more observations.")
+        
+    # handle the case that series_1 is longer than series_2:
+    if length_series_1 > length_series_2:
+        series_1 = series_1.sample(n=length_series_2, replace=False)
+        length_series_1 = len(series_1)
+    # handle the case that series_2 is longer than series_1:
+    elif length_series_2 > length_series_1:
+        series_2 = series_2.sample(n=length_series_1, replace=False)
+        length_series_2 = len(series_2)
+    
     # get value counts for each series
     value_counts_1 = series_1.value_counts()
     value_counts_2 = series_2.value_counts()
     
     # make sure that both have the same legth
-    value_counts_df = value_counts_1.to_frame().join(value_counts_2, how='left', rsuffix='_') # left join prevents expected values to be 0
+    # value_counts_df = value_counts_1.to_frame().join(value_counts_2, how='left', rsuffix='_') # left join prevents expected values to be 0
+    
+    # value_counts_df = value_counts_1.to_frame()
+    value_counts_df = pd.concat([value_counts_1, value_counts_2], axis=1)
     
     # rename the columns
     value_counts_df.columns = ['expected', 'observed']
@@ -64,10 +83,10 @@ def test_chi_squared(series_1, series_2):
     distribution_expected = value_counts_df['expected']
     distribution_observed = value_counts_df['observed']
     
-    # get values as probabilities (need to sum up to 1)
-    distribution_expected_p = distribution_expected / distribution_expected.sum()
-    distribution_observed_p = distribution_observed / distribution_observed.sum()
+#     # get values as probabilities (need to sum up to 1)
+#     distribution_expected_p = distribution_expected / distribution_expected.sum()
+#     distribution_observed_p = distribution_observed / distribution_observed.sum()
     
-    test_statistics, p_value = scipy.stats.chisquare(distribution_observed_p, distribution_expected_p)
+    test_statistics, p_value = scipy.stats.chisquare(distribution_observed, distribution_expected)
     return p_value
     
