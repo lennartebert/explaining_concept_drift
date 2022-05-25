@@ -5,6 +5,12 @@ from pm4py.objects.log.obj import EventStream
 import datetime
 from pm4py.algo.filtering.log.timestamp import timestamp_filter
 
+class Window():
+    def __init__(self, log, start, end):
+        self.log = log
+        self.start = start
+        self.end = end
+
 def get_log_windows(log, window_size, window_offset=None, slide_by=None, start=None, end=None, inclusion_criteria='events', type=None):
     """Cut a pm4py event log into windows.
 
@@ -50,35 +56,39 @@ def get_log_windows(log, window_size, window_offset=None, slide_by=None, start=N
     windows = {}
 
     while(window_b_end <= end):
-        
-        # print(f"Window a start: {window_a_start}")
-        # print(f"Window a end: {window_a_end}")
-        # print(f"Window b start: {window_b_start}")
-        # print(f"Window b end: {window_b_end}")
-        
-        window_a = None
-        window_b = None
+        window_a_log = None
+        window_b_log = None
 
         if type == 'time':
             if inclusion_criteria == 'events':
-                window_a = timestamp_filter.apply_events(log, window_a_start, window_a_end)
-                window_b = timestamp_filter.apply_events(log, window_b_start, window_b_end)
+                window_a_log = timestamp_filter.apply_events(log, window_a_start, window_a_end)
+                window_b_log = timestamp_filter.apply_events(log, window_b_start, window_b_end)
             elif inclusion_criteria == 'traces_contained':
-                window_a = timestamp_filter.filter_traces_contained(log, window_a_start, window_a_end)
-                window_b = timestamp_filter.filter_traces_contained(log, window_b_start, window_b_end)
+                window_a_log = timestamp_filter.filter_traces_contained(log, window_a_start, window_a_end)
+                window_b_log = timestamp_filter.filter_traces_contained(log, window_b_start, window_b_end)
             elif inclusion_criteria == 'traces_intersecting':
-                window_a = timestamp_filter.filter_traces_intersecting(log, window_a_start, window_a_end)
-                window_b = timestamp_filter.filter_traces_intersecting(log, window_b_start, window_b_end)
+                window_a_log = timestamp_filter.filter_traces_intersecting(log, window_a_start, window_a_end)
+                window_b_log = timestamp_filter.filter_traces_intersecting(log, window_b_start, window_b_end)
         elif type == 'traces':
             # ignore the inclusion criteria (only makes sense for the time-based approach)
-            window_a = log[window_a_start:window_a_end+1]
-            window_b = log[window_b_start:window_b_end+1]
-
-        windows[window_a_start] = (window_a, window_b)
-
+            window_a_log = log[window_a_start:window_a_end+1]
+            window_b_log = log[window_b_start:window_b_end+1]
+        
+        # set the new window start and end
         window_a_start = window_a_start + slide_by
         window_a_end = window_a_start + window_size - 1
         window_b_start = window_a_start + window_offset
-        window_b_end = window_b_start + window_size -1 
-            
-    return windows
+        window_b_end = window_b_start + window_size -1
+        
+         # package the windows for returning them
+        window_a = Window(window_a_log, 
+                          window_a_start,
+                          window_a_end)
+        window_b = Window(window_b_log, 
+                          window_b_start,
+                          window_b_end)
+        
+        windows = (window_a, window_b)
+        
+        # yield the result
+        yield windows
