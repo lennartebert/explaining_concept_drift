@@ -5,12 +5,13 @@ import pandas as pd
 class ConceptDriftExplainer():
     """The concept drift explainer explains concept drift which is observable in an event log by ranking attributes by their importance.
     """
+    
     def __init__(self, drift_point_detector, attribute_importance_measurer):
         self.drift_point_detector = drift_point_detector
         self.attribute_importance_measurer = attribute_importance_measurer
     
     def get_attribute_importance_per_changepoint(self, event_log):
-        # get concept drift points
+        # get process concept drift points
         change_points = self.drift_point_detector.get_change_points(event_log)
         
         attribute_importance_per_changepoint = {}

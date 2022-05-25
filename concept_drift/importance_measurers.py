@@ -16,7 +16,7 @@ class AttributeImportanceMeasurer():
         self.window_creator = window_creator
         self.start_before_change_point = start_before_change_point
         self.difference_measure = difference_measure
-        
+    
     def get_attribute_importance(self, event_log, change_point_location):
         """Get the attribute importance around specific change_point
         
@@ -30,15 +30,9 @@ class AttributeImportanceMeasurer():
         windows_start = change_point_location - self.start_before_change_point
         windows_end = change_point_location + self.window_creator.window_size
         
-        # print(windows_start)
-        # print(windows_end)
-        
         # get log windows
         log_windows = self.window_creator.create_windows(event_log, windows_start, windows_end)
-        
-        # print(len(log_windows))
-        # print()
-        
+               
         # calculate the importance measure
         attribute_importance_scores = self.difference_measure.calculate(log_windows)
         return attribute_importance_scores
@@ -52,6 +46,19 @@ class DifferenceMeasure(ABC):
     def _aggregate(self, test_results_df):
         pass
     
+    def _check_all_unique(self, data_series_a, data_series_b):
+        """Returns True if all data in either series is unique.
+        """
+        all_unique = False
+        
+        # all data in series a unique
+        if len(data_series_a.value_counts()) == len(data_series_a):
+            all_unique = True
+        elif len(data_series_b.value_counts()) == len(data_series_b):
+            all_unique = True
+        
+        return all_unique
+    
     def calculate(self, log_windows):
         """Calculate a difference measure for all windows in log.
         """
@@ -61,13 +68,19 @@ class DifferenceMeasure(ABC):
 
             attributes_window_a = helper.get_trace_attributes(window_a)
             attributes_window_b = helper.get_trace_attributes(window_b)
-
+            
             # perform test for each attribute
             # TODO handle the case that an attribute is not present in a given window
             for attribute_name, data_series_a in attributes_window_a.items():
                 data_series_b = attributes_window_b[attribute_name]
-                # perform the test
-                test_result = self._test(data_series_a, data_series_b)
+                
+                test_result = None
+                # check if all values in either series are unique - then don't perform the test
+                all_unique = self._check_all_unique(data_series_a, data_series_b)
+                if not all_unique:
+                    # perform the test
+                    test_result = self._test(data_series_a, data_series_b)
+                
                 calculation_results[start][attribute_name] = test_result
         
         # aggregate the test results
