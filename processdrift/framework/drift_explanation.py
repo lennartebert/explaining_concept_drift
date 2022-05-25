@@ -1,7 +1,10 @@
 """Drift explainer module to explain process mining concept drift based on attribute value drift.
 """
 
+import math
+from matplotlib import gridspec
 import matplotlib.pyplot as plt
+from matplotlib import lines
 
 
 class DriftExplainer():
@@ -88,27 +91,42 @@ class DriftExplainer():
         return change_point_explanations
 
 
-def plot_primary_and_secondary_change_series(primary_and_secondary_change_series):
+def plot_primary_and_secondary_change_series(primary_and_secondary_change_series, columns=2):
     """Plots the primary and secondary change series returned by DriftExplainer.get_primary_and_secondary_change_series(event_log).
     
     Args:
         primary_and_secondary_change_series: The primary and secondary change series as returned by DriftExplainer.get_primary_and_secondary_change_series(event_log).
     """
     # get the primary and secondary change
-    primary_change = primary_and_secondary_change_series[0]
+    primary_change_series = primary_and_secondary_change_series[0]
     secondary_change_series_dict = primary_and_secondary_change_series[1]
     
+    n = len(secondary_change_series_dict.keys())
+    rows = int(math.ceil(n / columns))
+
+    gs = gridspec.GridSpec(rows, columns)
+    fig = plt.figure(dpi=200, figsize = (8,8))
+    
+    # get sorted attribute list
+    attribute_list = sorted(list(secondary_change_series_dict.keys()))
+    
     # plot all secondary values
-    for attribute_name, secondary_change_series in secondary_change_series_dict.items():
-        plt.plot(secondary_change_series, label=attribute_name)
+    for i, key in enumerate(attribute_list):
+        series = secondary_change_series_dict[key]
+        ax = fig.add_subplot(gs[i])
+        ax.plot(series)
+        ax.plot(primary_change_series, color='red', linestyle='dashed')
+        # set the y axis to 0 - 1
+        plt.ylim(0, 1)
+        ax.title.set_text(key)
     
+    # add a title
+    fig.suptitle('Attribute Change over Time')
+
+    fig.tight_layout()
     
-    # plot the primary value axis in red
-    plt.plot(primary_change, color='red', label='Primary Change')
+    # create the legend
+    legend_elements = [lines.Line2D([0], [0], color='red', linestyle='dashed', label='primary axis')]
+    fig.legend(handles=legend_elements, loc='lower center', bbox_to_anchor=(0.5, -0.05))
     
-    
-    # set the y axis to 0 - 1
-    plt.ylim(0, 1)
-    
-    plt.legend()
     plt.show()

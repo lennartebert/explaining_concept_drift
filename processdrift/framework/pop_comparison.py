@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 import scipy
 
+
 import spm1d
 
 class PopComparer(ABC):
@@ -70,6 +71,69 @@ class KSTestPopComparer(PopComparer):
         """
         test_statistics, p_value = scipy.stats.kstest(population_1, population_2)
         return p_value
+
+class KSTestPopComparer(PopComparer):
+    """Perform a two-sample Kolmogorov-Smirnov test to compare two populations.
+    """
+    def _get_comparison_measure(self, population_1, population_2):
+        """Calculates the Kolmogorov-Smirnov test as comparison measure measure between the two populations.
+        
+        Args:
+            population_1: The first population. Also called the expected population.
+            population_2: The first population. Also called the observed population.
+            
+        Returns:
+            P-value of KS test.
+        """
+        test_statistics, p_value = scipy.stats.kstest(population_1, population_2)
+        return p_value
+
+
+class HotellingsTSquaredPopComparer(PopComparer):
+    """Perform a Hotellings T Squared test to compare two populations.
+    """
+    def _get_comparison_measure(self, population_1, population_2):
+        """Calculates the Hotellings T Squared test as comparison measure measure between the two populations.
+        
+        Args:
+            population_1: The first population. Also called the expected population.
+            population_2: The first population. Also called the observed population.
+            
+        Returns:
+            P-value of Hotellings T Squared test.
+        """
+        # the test cannot be calculated if the populations are singular
+        
+        p_value = None
+        
+        try:
+            # implementation by https://www.r-bloggers.com/2020/10/hotellings-t2-in-julia-python-and-r/
+            X = population_1.to_numpy()
+            Y = population_2.to_numpy()
+            
+            nx, p = X.shape
+            ny, _ = Y.shape
+            
+            delta = np.mean(X, axis=0) - np.mean(Y, axis=0)
+
+            Sx = np.cov(X, rowvar=False)
+            Sy = np.cov(Y, rowvar=False)
+
+            S_pooled = ((nx-1)*Sx + (ny-1)*Sy)/(nx+ny-2)
+            t_squared = (nx*ny)/(nx+ny) * np.matmul(np.matmul(delta.transpose(), np.linalg.inv(S_pooled)), delta)
+            statistic = t_squared * (nx+ny-p-1)/(p*(nx+ny-2))
+
+            f = scipy.stats.f(p, nx+ny-p-1)
+            p_value = 1 - f.cdf(statistic)
+        except np.linalg.LinAlgError as err:
+             # catch linear algebra errors that are thrown when the populations are singular
+            if 'Singular matrix' in str(err):
+                p_value = 1
+            else:
+                raise err
+        
+        return p_value
+    
 
 class ProbabilityDistributionComparer(PopComparer, ABC):
     """Abstract class to be inhereted from if the PopComparer works based on probability distributions. 
@@ -149,10 +213,6 @@ def _all_dissimilar(series_1, series_2):
     
     return False
 
-
-def test_hotellings_t_squared(series_1, series_2):
-    if _all_equal(series_1, series_2): return 1 # otherwise test crashes if there is a perfect correlation
-    return spm1d.stats.hotellings2(series_1, series_2)
 
 def test_chi_squared(series_1, series_2):
     if _all_equal(series_1, series_2): return 1

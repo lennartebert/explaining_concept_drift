@@ -93,7 +93,11 @@ class RelationalEntropyFeatureExtractor(FeatureExtractor):
         """
         return features.get_relational_entropy(log, direction=self.direction, activity_name_field=self.activity_name_field)
 
-    
+class RelationshipTypesCountFeatureExtractor(FeatureExtractor):
+    def extract(self, log):
+        bi_directional_rtc = features.get_bi_directional_relationship_type_counts(log)
+        return bi_directional_rtc
+
 def get_all_trace_attributes(log):
     """Get all trace-level attributes in a pm4py event log.
     
