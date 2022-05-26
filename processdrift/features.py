@@ -9,6 +9,7 @@ If features are two-dimensional, functions return a pandas Dataframe.
 
 import pandas as pd
 import numpy as np
+import networkx as nx
 
 def _get_traces(log, activity_name_field='concept:name'):
     """Get traces from a log as list of activity names.
@@ -307,3 +308,163 @@ def _get_relational_entropy(relationship_type_counts_df):
     
     relation_entropy_series = pd.Series(activity_relation_entropy)
     return(relation_entropy_series)
+
+def get_alpha_direct_relationships(traces, direction='precedes'):
+    """Get the alpha directly precedes/succeeds relationships in an event log as a list of tuples.
+    
+    In an event log with a trace ['a', 'b', 'c'], 'a' precedes 'b'. From the other direction, 'b' succeeds 'a'.
+    
+    Args:
+        log: A pm4py event log.
+        direction: 'precedes' or 'succeeds'. Direction of the alpha directly follows relationship.
+    
+    Returns:
+        List of tuples with alpha directly follows/precedes relationships.
+    """
+    direct_relationship = set()
+    
+    # iterate all traces
+    for trace in traces:
+        # revert sorting of trace if direction is 'succeeds'
+        if direction == 'succeeds':
+            trace.reverse()
+        
+        last_activity = None
+        for activity in trace:     
+            # handle first iteration
+            if last_activity is None:
+                last_activity = activity
+                continue
+            direct_relationship.add((last_activity, activity))
+
+            last_activity = activity
+    
+    return direct_relationship
+
+def get_concurrency(traces):
+    edges_precede = get_alpha_direct_relationships(traces, direction='precedes')
+    edges_succeed = get_alpha_direct_relationships(traces, direction='succeeds')
+    concurrency = edges_precede.intersection(edges_succeed)
+    return concurrency
+
+def get_runs(traces):    
+    global_concurrency = get_concurrency(traces)
+    
+    # build a list of runs
+    runs = []
+    for trace in traces:
+        trace_edges_precede = get_alpha_direct_relationships([trace], direction='precedes')
+        trace_graph = nx.DiGraph(trace_edges_precede)
+
+        # apply transitive closure (expands the graph)
+        trace_transitive_closure_graph = nx.transitive_closure(trace_graph, reflexive=False)
+
+        # remove the global concurrency relations
+        trace_transitive_closure_graph.remove_edges_from(global_concurrency)
+
+        # perform transitive reduction only if the graph is acyclic
+        reduced_graph = trace_transitive_closure_graph
+        
+        # try:
+        #     reduced_graph = nx.transitive_reduction(trace_transitive_closure_graph)
+        # except nx.NetworkXError as e:
+        #     # A networkx error is expected for cyclic graphs
+        #     pass
+        
+        runs.append(str(sorted(list(reduced_graph.edges))))
+
+    return runs
+
+
+#     all_activities = set()
+#     alpha_direct_relationships = {}
+    
+#     traces = _get_traces(log, activity_name_field)
+    
+
+# def get_alpha_direct_relationships(log, direction='precedes', activity_name_field='concept:name'):
+#     """Get the alpha directly precedes/succeeds relationships in an event log as a matrix.
+    
+#     In an event log with a trace ['a', 'b', 'c'], 'a' precedes 'b'. From the other direction, 'b' succeeds 'a'.
+    
+#     Args:
+#         log: A pm4py event log.
+#         direction: 'precedes' or 'succeeds'. Direction of the alpha directly follows relationship.
+#         activity_name_field: Name of the activity field.
+    
+#     Returns:
+#         Dataframe with alpha directly follows/precedes relationships.
+#     """
+#     all_activities = set()
+#     alpha_direct_relationships = {}
+    
+#     traces = _get_traces(log, activity_name_field)
+    
+#     # iterate all traces
+#     for trace in traces:
+#         # revert sorting of trace if direction is 'succeeds'
+#         if direction == 'succeeds':
+#             trace.reverse()
+        
+#         last_activity = None
+        
+#         for activity in trace:
+#             if activity not in all_activities: 
+#                 all_activities.add(activity)
+            
+#             # handle first iteration
+#             if last_activity is None:
+#                 last_activity = activity
+#                 continue
+            
+#             if last_activity not in alpha_direct_relationships:
+#                 alpha_direct_relationships[last_activity] = {}
+            
+#             if activity not in alpha_direct_relationships[last_activity]:
+#                 alpha_direct_relationships[last_activity][activity] = 1
+            
+#             last_activity = activity
+    
+#     # convert dictionary structure into dataframe
+#     alpha_direct_relationships_df = pd.DataFrame().from_dict(alpha_direct_relationships, orient='index')
+
+#     # replace nan-values with 0
+#     alpha_direct_relationships_df = alpha_direct_relationships_df.fillna(0)
+
+#     # make sure all activities have a row and a column
+#     for activity in all_activities:
+#         if activity not in alpha_direct_relationships_df.columns:
+#             alpha_direct_relationships_df[activity] = 0
+#         if activity not in list(alpha_direct_relationships_df.index.values):
+#             alpha_direct_relationships_df.loc[activity] = 0
+
+#     # convert all values to integers
+#     # alpha_direct_relationships_df = alpha_direct_relationships_df.apply(pd.to_numeric, downcast='integer')
+    
+#     alpha_direct_relationships_df = alpha_direct_relationships_df.astype('bool')
+    
+#     # sort rows and columns of resulting dataframe alphabetically
+#     alpha_direct_relationships_df = alpha_direct_relationships_df.sort_index(axis=0)
+#     alpha_direct_relationships_df = alpha_direct_relationships_df.sort_index(axis=1)
+    
+#     return alpha_direct_relationships_df
+
+# def get_alpha_concurrency(log, activity_name_field='concept:name'):
+#     """Gets the concurrency relationships in a given log.
+    
+#     Used by Maaradji et al. 2017.
+    
+#     Args:
+#         log: A pm4py event log.
+#         activity_name_field: Name of the activity field.
+    
+#     Returns:
+#         Dataframe with alpha concurrency relationships.
+#     """
+#     directly_precedes_relationships = get_alpha_direct_relationships(log, direction='precedes', activity_name_field=activity_name_field)
+#     directly_succeeds_relationships = get_alpha_direct_relationships(log, direction='precedes', activity_name_field=activity_name_field)
+    
+#     # conjunct both dataframes with logical "and"
+#     alpha_concurrency_df = (succeeds & precedes)
+
+#     return alpha_concurrency_df

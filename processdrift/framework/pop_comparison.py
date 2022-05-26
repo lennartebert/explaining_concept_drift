@@ -4,10 +4,7 @@
 from abc import ABC, abstractmethod
 import pandas as pd
 import numpy as np
-import scipy
-
-
-import spm1d
+import scipy.stats
 
 class PopComparer(ABC):
     """PopComparer compares two populations.
@@ -56,22 +53,6 @@ class PopComparer(ABC):
         difference = self._get_comparison_measure(population_1_preprocessed, population_2_preprocessed)
         return difference
     
-class KSTestPopComparer(PopComparer):
-    """Perform a two-sample Kolmogorov-Smirnov test to compare two populations.
-    """
-    def _get_comparison_measure(self, population_1, population_2):
-        """Calculates the Kolmogorov-Smirnov test as comparison measure measure between the two populations.
-        
-        Args:
-            population_1: The first population. Also called the expected population.
-            population_2: The first population. Also called the observed population.
-            
-        Returns:
-            P-value of KS test.
-        """
-        test_statistics, p_value = scipy.stats.kstest(population_1, population_2)
-        return p_value
-
 class KSTestPopComparer(PopComparer):
     """Perform a two-sample Kolmogorov-Smirnov test to compare two populations.
     """
@@ -187,6 +168,87 @@ class HellingerDistanceComparer(ProbabilityDistributionComparer):
         comparison_measure = 1 - hellinger_distance
         return comparison_measure
 
+
+def get_frequency_counts(observations):
+    """Get frequency counts from a list of observations.
+    
+    Args:
+        observations: List of observations
+        
+    Returns:
+        Series with counts for each observation.
+    """
+    observations_series = pd.Series(observations)
+    frequency_counts = observations_series.value_counts()
+    return frequency_counts
+
+
+class ChiSquaredComparer(PopComparer):
+    """Get the Chi Squared Distance between the two populations.
+    """
+    def _preprocess(self, population_1, population_2):
+        """Get frequency counts for both populations.
+
+        Args:
+            population_1: The first population.
+            population_2: The second population.
+            
+        Returns:
+            (population_1, population_2): The two preprocessed populations.
+        """
+        # create series from observation list
+        pop_1_series = pd.Series(population_1, name='expected')
+        pop_2_series = pd.Series(population_2, name='observed')
+
+        # count number of values
+        pop_1_value_counts = pop_1_series.value_counts()
+        pop_2_value_counts = pop_2_series.value_counts()
+
+        # create pandas dataframe
+        merged_df = pd.merge(pop_1_value_counts, pop_2_value_counts, how='left', left_index=True, right_index=True)
+
+        # replace Na with 0
+        merged_df = merged_df.fillna(0)
+
+        # set data type to integer
+        merged_df = merged_df.astype('int')
+
+        # sum the expected values and oversample the observed values to fit
+        missing_observed_samples = sum(merged_df['expected']) - sum(merged_df['observed'])
+        missing_observed_samples
+
+        # draw the sample
+        p = merged_df['observed'] / sum(merged_df['observed'])
+        oversampled_observations = np.random.choice(list(merged_df.index), size=missing_observed_samples, p=p)
+
+        # convert to pandas series
+        oversampled_series = pd.Series(oversampled_observations)
+        oversampled_value_counts = oversampled_series.value_counts()
+
+        # add to observed axis 
+        merged_df['observed'] = merged_df['observed'].add(oversampled_value_counts, fill_value=0)
+
+        # set data type to integer
+        merged_df = merged_df.astype('int')
+
+        return merged_df['expected'].values, merged_df['observed'].values
+    
+    def _get_comparison_measure(self, population_1, population_2):
+        """Calculates the Chi-square test between the two populations.
+        
+        Args:
+            population_1: The first population. Also called the expected population.
+            population_2: The first population. Also called the observed population.
+            
+        Returns:
+            p-value for Chi-Square test for both populations.
+        """
+        # the populations have been transformed into frequency counts in preprocessing
+
+        test_statistics, p_value = scipy.stats.chisquare(population_2, population_1)
+        return p_value
+
+
 # TODO finalize docstrings and delete unused functions.
 def _all_equal(series_1, series_2):
     """Return whether all values in series are equal or different"""
@@ -213,51 +275,3 @@ def _all_dissimilar(series_1, series_2):
     
     return False
 
-
-def test_chi_squared(series_1, series_2):
-    if _all_equal(series_1, series_2): return 1
-    if _all_dissimilar(series_1, series_2): return 0
-    
-    # series_1 and series 2 need to have the same number of samples for chi_square to work
-    # We test for this criteria, handle it and return a message to the user if this is not the case.
-    length_series_1 = len(series_1)
-    length_series_2 = len(series_2)
-    if length_series_1 != length_series_2:
-        print(f"series_1 and series_2 do not have the same number of samples: {length_series_1} and {length_series_2}! We'll handle it by undersampling the series with more observations.")
-        
-    # handle the case that series_1 is longer than series_2:
-    if length_series_1 > length_series_2:
-        series_1 = series_1.sample(n=length_series_2, replace=False)
-        length_series_1 = len(series_1)
-    # handle the case that series_2 is longer than series_1:
-    elif length_series_2 > length_series_1:
-        series_2 = series_2.sample(n=length_series_1, replace=False)
-        length_series_2 = len(series_2)
-    
-    # get value counts for each series
-    value_counts_1 = series_1.value_counts()
-    value_counts_2 = series_2.value_counts()
-    
-    # make sure that both have the same legth
-    # value_counts_df = value_counts_1.to_frame().join(value_counts_2, how='left', rsuffix='_') # left join prevents expected values to be 0
-    
-    # value_counts_df = value_counts_1.to_frame()
-    value_counts_df = pd.concat([value_counts_1, value_counts_2], axis=1)
-    
-    # rename the columns
-    value_counts_df.columns = ['expected', 'observed']
-    
-    # replace nan with 0
-    value_counts_df = value_counts_df.fillna(0)
-    
-    # compute the observed frequencies in each category
-    distribution_expected = value_counts_df['expected']
-    distribution_observed = value_counts_df['observed']
-    
-#     # get values as probabilities (need to sum up to 1)
-#     distribution_expected_p = distribution_expected / distribution_expected.sum()
-#     distribution_observed_p = distribution_observed / distribution_observed.sum()
-    
-    test_statistics, p_value = scipy.stats.chisquare(distribution_observed, distribution_expected)
-    return p_value
-    

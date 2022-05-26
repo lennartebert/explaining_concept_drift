@@ -38,11 +38,12 @@ class DriftExplainer():
         
         return primary_change_series, secondary_change_series_dict
     
-    def attribute_importance_per_primary_change_point(self, event_log):
+    def attribute_importance_per_primary_change_point(self, event_log, max_distance=None):
         """Get the change points in the primary drift detector and all secondary change points that presume.
         
         Args:
             event_log: A pm4py event log.
+            max_distance: The maximum distance between a primary and secondary changepoint so that the secondary change_point is returned.
             
         Returns:
             (primary_change_points, change_point_explanations): The primary change points and explanations for each.
@@ -58,7 +59,7 @@ class DriftExplainer():
         for secondary_drift_detector in self.secondary_drift_detectors:
             secondary_change_points = secondary_drift_detector.get_change_points(event_log)
             all_secondary_change_points[secondary_drift_detector.name] = secondary_change_points
-            
+        
         # rank attributes by closest secondary change point before primary change point
         # for that, create a list of tuples with all secondary change points and detector names
         secondary_time_detector_tuples = []
@@ -66,16 +67,19 @@ class DriftExplainer():
             for change_point in change_points:
                 secondary_time_detector_tuples.append((change_point, drift_detector))
         
+        # sort the secondary time detector tuples
+        secondary_time_detector_tuples = sorted(secondary_time_detector_tuples)
+        
         # get rank the secondary change point detectors by how close the secondary change point was to the primary change point
         change_point_explanations = {}
         for primary_change_point in primary_change_points:            
             distances_to_change_point = []
             for secondary_change_point, drift_detector in secondary_time_detector_tuples:
-                # only search up to the primary change point
-                if primary_change_point > secondary_change_point:
-                    break
+                distance = secondary_change_point - primary_change_point
                 
-                distance = primary_change_point - secondary_change_point
+                # keep distance in range max_distance
+                if max_distance is not None and abs(distance) >= max_distance:
+                    continue
                 
                 distances_to_change_point.append({
                     'detector': drift_detector,
@@ -83,11 +87,11 @@ class DriftExplainer():
                     'distance': distance
                 })
             
-            # revert sorting of change point distance list so that the closest observed change point comes first
-            distances_to_change_point.reverse()
+            # sort by change point distance
+            distances_to_change_point = sorted(distances_to_change_point, key=lambda change_point_explanation: abs(change_point_explanation['distance']))
             
             change_point_explanations[primary_change_point] = distances_to_change_point
-            
+        
         return change_point_explanations
 
 

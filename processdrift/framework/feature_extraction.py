@@ -94,9 +94,31 @@ class RelationalEntropyFeatureExtractor(FeatureExtractor):
         return features.get_relational_entropy(log, direction=self.direction, activity_name_field=self.activity_name_field)
 
 class RelationshipTypesCountFeatureExtractor(FeatureExtractor):
+    def __init__(self):
+        """Initialize a feature extractor that extracts the relationship types count feature.
+        """
+        super().__init__('Relationship Types Count')
+
+    """Extracts the relationship type counts for each activity. Introduced by Bose et al. 2011
+    """
     def extract(self, log):
         bi_directional_rtc = features.get_bi_directional_relationship_type_counts(log)
         return bi_directional_rtc
+
+class RunsFeatureExtractor(FeatureExtractor):
+    def __init__(self):
+        """Initialize a feature extractor that extracts the runs feature.
+        """
+        super().__init__('Runs')
+
+    """Extracts the number of runs in a given log. Introduced by Maaradji et al. 2015.
+    """
+    def extract(self, log):
+        # get all traces that are in the log
+        traces = features._get_traces(log)
+        runs = features.get_runs(traces)
+
+        return runs
 
 def get_all_trace_attributes(log):
     """Get all trace-level attributes in a pm4py event log.
