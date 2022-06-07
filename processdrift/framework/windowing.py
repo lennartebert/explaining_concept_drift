@@ -3,6 +3,7 @@
 
 from abc import ABC, abstractmethod
 import datetime
+import numpy as np
 
 from pm4py.objects.log.obj import EventStream
 from pm4py.algo.filtering.log.timestamp import timestamp_filter
@@ -41,14 +42,13 @@ class FixedSizeWindowGenerator(WindowGenerator):
     """A fixes size window generator generates windows of fixed size.
     """
     
-    def __init__(self,  window_size, window_offset=None, slide_by=None, window_type='trace', inclusion_criteria='events'):
+    def __init__(self,  window_size, window_offset=None, slide_by=1, window_type='trace', inclusion_criteria='events'):
         """Initialize the fixed sized window generator with the desired settings.
         
         Args:
             window_size: Size of each window as Python datetime.timedelta or trace number.
             window_offset: Offset of windows defined as datetime.timedelta or trace number. If None, offsets by window_size (non-overlapping windows).
-            slide_by: How much to slide between generated windows. Defaults to window_size.
-            window_type: 
+            slide_by: How much to slide between generated windows. Defaults to 1.
             window_type: 'trace' or 'time'. Whether the window is created based on time or count of traces.
             inclusion_criteria: 'events', 'traces_intersecting', 'trace_contained'. Either return all events that take place in a window, all complete traces that have any event in the window or all complete traces that are fully contained in the window. Ignored if type is 'traces'.
         """
@@ -99,25 +99,19 @@ class FixedSizeWindowGenerator(WindowGenerator):
             window_b_log = None
 
             if self.window_type == 'time':
-                if inclusion_criteria == 'events':
+                if self.inclusion_criteria == 'events':
                     window_a_log = timestamp_filter.apply_events(event_log, window_a_start, window_a_end)
                     window_b_log = timestamp_filter.apply_events(event_log, window_b_start, window_b_end)
-                elif inclusion_criteria == 'traces_contained':
+                elif self.inclusion_criteria == 'traces_contained':
                     window_a_log = timestamp_filter.filter_traces_contained(event_log, window_a_start, window_a_end)
                     window_b_log = timestamp_filter.filter_traces_contained(event_log, window_b_start, window_b_end)
-                elif inclusion_criteria == 'traces_intersecting':
+                elif self.inclusion_criteria == 'traces_intersecting':
                     window_a_log = timestamp_filter.filter_traces_intersecting(event_log, window_a_start, window_a_end)
                     window_b_log = timestamp_filter.filter_traces_intersecting(event_log, window_b_start, window_b_end)
             elif self.window_type == 'trace':
                 # ignore the inclusion criteria (only makes sense for the time-based approach)
                 window_a_log = event_log[window_a_start:window_a_end+1]
                 window_b_log = event_log[window_b_start:window_b_end+1]
-
-            # set the new window start and end
-            window_a_start = window_a_start + self.slide_by
-            window_a_end = window_a_start + self.window_size - 1
-            window_b_start = window_a_start + self.window_offset
-            window_b_end = window_b_start + self.window_size -1
 
              # package the windows for returning them
             window_a = Window(window_a_log, 
@@ -132,4 +126,66 @@ class FixedSizeWindowGenerator(WindowGenerator):
             # yield the result
             yield windows
 
-# TODO implement AdaptiveWindowGenerator
+            # set the new window start and end
+            # doing this after the yield allows for any handling object to change the window size dynamically
+            window_a_start = window_a_start + self.slide_by
+            window_a_end = window_a_start + self.window_size - 1
+            window_b_start = window_a_start + self.window_offset
+            window_b_end = window_b_start + self.window_size - 1
+
+class AdaptiveWindowGenerator(FixedSizeWindowGenerator):
+    """Adaptive window generator that sets the next window size according to the observed variability in an input variable.
+
+    The approach is adapted from Maaradji et al. 2017.
+    """
+    
+    def __init__(self,  initial_window_size, window_offset=None, slide_by=1, window_type='trace', inclusion_criteria='events'):
+        """Initialize the variable sized window generator with the desired settings.
+        
+        Args:
+            initial_window_size: Initial window size. Will increase/decrease adaptively. Python datetime.timedelta or trace number.
+            window_offset: Offset of windows defined as datetime.timedelta or trace number. If None, offsets by window_size (non-overlapping windows).
+            slide_by: How much to slide between generated windows. Defaults to 1.
+            window_type: 'trace' or 'time'. Whether the window is created based on time or count of traces.
+            inclusion_criteria: 'events', 'traces_intersecting', 'trace_contained'. Either return all events that take place in a window, all complete traces that have any event in the window or all complete traces that are fully contained in the window. Ignored if type is 'traces'.
+        """
+        super().__init__(initial_window_size, window_offset, slide_by, window_type, inclusion_criteria)
+
+        self.initial_window_size = initial_window_size
+        self.previous_variability = None
+
+    def _get_variability(self, features_window_a, features_window_b):
+        """Get the variability as the number of observed unique values in the windows.
+        
+        Args:
+            features_window_a: Extracted features from window a. numpy array.
+            features_window_b: Extracted features from window b. numpy array.
+        """
+        features = np.concatenate([features_window_a, features_window_b])
+        unique_values_in_windows = np.unique(features)
+        number_unique_values_in_windows = len(unique_values_in_windows)
+
+        return number_unique_values_in_windows
+
+    def update_window_size(self, features_window_a, features_window_b):
+        """Update the window size by evaluating how the variability changed between windows.
+
+        Args:
+            features_window_a: Observed features in window a.
+            features_window_b: Observed features in window b. 
+        """
+        # if there was no previous observation of variability, return
+        if self.previous_variability is None:
+            self.previous_variability = self._get_variability(features_window_a, features_window_b)
+            return
+
+        new_variability = self._get_variability(features_window_a, features_window_b)
+
+        # the evolution ratio is the change in variability between two windows
+        evolution_ratio = new_variability / self.previous_variability
+
+        next_window_size = int(self.window_size * evolution_ratio)
+
+        # set the object variables
+        self.previous_variability = new_variability
+        self.window_size = next_window_size

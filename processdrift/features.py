@@ -10,6 +10,7 @@ If features are two-dimensional, functions return a pandas Dataframe.
 import pandas as pd
 import numpy as np
 import networkx as nx
+import copy
 
 def _get_traces(log, activity_name_field='concept:name'):
     """Get traces from a log as list of activity names.
@@ -321,6 +322,7 @@ def get_alpha_direct_relationships(traces, direction='precedes'):
     Returns:
         List of tuples with alpha directly follows/precedes relationships.
     """
+    traces = copy.deepcopy(traces)
     direct_relationship = set()
     
     # iterate all traces
@@ -347,31 +349,87 @@ def get_concurrency(traces):
     concurrency = edges_precede.intersection(edges_succeed)
     return concurrency
 
-def get_runs(traces):    
+def get_concurrency_dict(concurrency_tuples):
+    result = {}
+    for i in concurrency_tuples:  
+        result.setdefault(i[0],[]).append(i[1])
+    return result
+
+def get_runs(traces):
     global_concurrency = get_concurrency(traces)
-    
+    concurrency_dict = get_concurrency_dict(global_concurrency)
+
     # build a list of runs
     runs = []
+
     for trace in traces:
-        trace_edges_precede = get_alpha_direct_relationships([trace], direction='precedes')
-        trace_graph = nx.DiGraph(trace_edges_precede)
+        edges = set()
+        for index_activity_1 in range(len(trace) - 1):
+            index_activity_2 = index_activity_1 + 1
 
-        # apply transitive closure (expands the graph)
-        trace_transitive_closure_graph = nx.transitive_closure(trace_graph, reflexive=False)
-
-        # remove the global concurrency relations
-        trace_transitive_closure_graph.remove_edges_from(global_concurrency)
-
-        # perform transitive reduction only if the graph is acyclic
-        reduced_graph = trace_transitive_closure_graph
+            activity_1 = trace[index_activity_1]
+            activity_2 = trace[index_activity_2]
+            edges.add((activity_1, activity_2))
         
-        # try:
-        #     reduced_graph = nx.transitive_reduction(trace_transitive_closure_graph)
-        # except nx.NetworkXError as e:
-        #     # A networkx error is expected for cyclic graphs
-        #     pass
+        run = set()
+        for edge in edges:
+            activity_1 = edge[0]
+            activity_2 = edge[1]
+            if activity_1 in concurrency_dict:
+                for conccurency in concurrency_dict[activity_1]:
+                    if conccurency == activity_2:
+                        run.add((activity_1, activity_2))
+                        run.add((activity_2, activity_1))
+                    else:
+                        run.add(edge)
+                        run.add((conccurency, activity_2))
+            if activity_2 in concurrency_dict:
+                for concurrency in concurrency_dict[activity_2]:
+                    if concurrency == activity_1:
+                        run.add((activity_1, activity_2))
+                        run.add((activity_2, activity_1))
+                    else:
+                        run.add(edge)
+                        run.add((activity_1, concurrency))
+            else:
+                run.add(edge)
+
+        run_list = sorted(run)
+        run_string = str(run_list)
+        runs.append(run_string)
+
+    # prior implementation of runs closer to Maaradji et al. 2017
+    # for trace in traces:
+    #     # get all edges that result from the trace
+    #     # if an edge is among the global concurrency set, add its 
+    #     # abcd, acbd -> ab ac 
+    #     for index_activity_1 in range(len(trace) - 1):
+    #         index_activity_2 = index_activity_1
+    #         activity_1 = trace[index_activity_1]
+    #         activity_2 = trace[index_activity_2]
+
+    #         for (activity_1, activity_2) in global_concurrency:
+    #             pass
+
+    #     trace_edges_precede = get_alpha_direct_relationships([trace], direction='precedes')
+    #     trace_graph = nx.DiGraph(trace_edges_precede)
+
+    #     # apply transitive closure (expands the graph)
+    #     trace_transitive_closure_graph = nx.transitive_closure(trace_graph, reflexive=False)
+
+    #     # remove the global concurrency relations
+    #     trace_transitive_closure_graph.remove_edges_from(global_concurrency)
+
+    #     # perform transitive reduction only if the graph is acyclic
+    #     reduced_graph = trace_transitive_closure_graph
+
+    #     try:
+    #         reduced_graph = nx.transitive_reduction(trace_transitive_closure_graph)
+    #     except nx.NetworkXError as e:
+    #         # A networkx error is expected for cyclic graphs
+    #         pass
         
-        runs.append(str(sorted(list(reduced_graph.edges))))
+    #     runs.append(str(sorted(list(reduced_graph.edges))))
 
     return runs
 

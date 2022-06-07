@@ -44,7 +44,7 @@ class AttributeFeatureExtractor(FeatureExtractor):
             attribute_level: 'trace' or 'event'. Whether the attribute is on trace or event level.
             attribute_name: Name of the attribute.
         """
-        super().__init__(f'Attribute: {attribute_name}')
+        super().__init__(f'{attribute_name}')
         self.attribute_level = attribute_level
         self.attribute_name = attribute_name
             

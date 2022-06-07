@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 import pandas as pd
 import numpy as np
 import scipy.stats
+import math
 
 class PopComparer(ABC):
     """PopComparer compares two populations.
@@ -192,7 +193,7 @@ class ChiSquaredComparer(PopComparer):
         Args:
             population_1: The first population.
             population_2: The second population.
-            
+        
         Returns:
             (population_1, population_2): The two preprocessed populations.
         """
@@ -219,6 +220,10 @@ class ChiSquaredComparer(PopComparer):
 
         # draw the sample
         p = merged_df['observed'] / sum(merged_df['observed'])
+        
+        # make sure p is never NaN
+        p = p.fillna(0)
+        
         oversampled_observations = np.random.choice(list(merged_df.index), size=missing_observed_samples, p=p)
 
         # convert to pandas series

@@ -20,25 +20,55 @@ class DriftExplainer():
         """
         self.primary_drift_detector = primary_drift_detector
         self.secondary_drift_detectors = secondary_drift_detectors
-        
-    def get_primary_and_secondary_change_series(self, event_log):
-        """Get the changes registered in the primary and secondary drift detector as a Pandas Series.
-        
+
+    def get_primary_and_secondary_changes(self, event_log, max_distance=None):
+        """Get changes in the primary and secondary drift detectors.
+
         Args:
             event_log: A pm4py event log.
+            max_distance: Maximum distance between a primary and secondary change point so that the secondary change point is evaluated.
             
         Returns:
-            (primary_change_series, secondary_change_series_dict): The primary change series and a dictionary with the change series for each secondary drift detector.
+            (primary_changes, secondary_changes): Dictionaries for primary and secondary changes.
         """
-        primary_change_series = self.primary_drift_detector.get_change_series(event_log)
-        secondary_change_series_dict = {}
+        primary_changes = self.primary_drift_detector.get_changes(event_log)
+        primary_change_points = primary_changes['change_points']
+
+        # for each secondary drift detector, get changes
+        secondary_changes_dictionary = {}
         for secondary_drift_detector in self.secondary_drift_detectors:
-            secondary_change_points = secondary_drift_detector.get_change_series(event_log)
-            secondary_change_series_dict[secondary_drift_detector.name] = secondary_change_points
+            secondary_changes = None
+            
+            # pass the primary changes, depending on whether the max_distance was set
+            if max_distance is not None:
+                secondary_changes = secondary_drift_detector.get_changes(event_log, primary_change_points, max_distance)
+            else:
+                secondary_changes = secondary_drift_detector.get_changes(event_log)
+
+            secondary_changes_dictionary[secondary_drift_detector.name] = secondary_changes
         
-        return primary_change_series, secondary_change_series_dict
+        return primary_changes, secondary_changes_dictionary
+
+
+    # def get_primary_and_secondary_change_series(self, event_log, max_distance=None):
+    #     """Get the changes registered in the primary and secondary drift detector as a Pandas Series.
+        
+    #     Args:
+    #         event_log: A pm4py event log.
+    #         max_distance: Maximum distance between a primary and secondary change point so that the secondary change point is evaluated.
+            
+    #     Returns:
+    #         (primary_change_series, secondary_change_series_dict): The primary change series and a dictionary with the change series for each secondary drift detector.
+    #     """
+    #     primary_change_series = self.primary_drift_detector.get_change_series(event_log)
+    #     secondary_change_series_dict = {}
+    #     for secondary_drift_detector in self.secondary_drift_detectors:
+    #         secondary_change_points = secondary_drift_detector.get_change_series(event_log)
+    #         secondary_change_series_dict[secondary_drift_detector.name] = secondary_change_points
+        
+    #     return primary_change_series, secondary_change_series_dict
     
-    def attribute_importance_per_primary_change_point(self, event_log, max_distance=None):
+    def attribute_importance_per_primary_change_point(self, primary_and_secondary_changes, max_distance=None):
         """Get the change points in the primary drift detector and all secondary change points that presume.
         
         Args:
@@ -83,7 +113,7 @@ class DriftExplainer():
                 
                 distances_to_change_point.append({
                     'detector': drift_detector,
-                    'detector_change_point': secondary_change_point,
+                    'change_point': secondary_change_point,
                     'distance': distance
                 })
             
@@ -93,7 +123,6 @@ class DriftExplainer():
             change_point_explanations[primary_change_point] = distances_to_change_point
         
         return change_point_explanations
-
 
 def plot_primary_and_secondary_change_series(primary_and_secondary_change_series, columns=2):
     """Plots the primary and secondary change series returned by DriftExplainer.get_primary_and_secondary_change_series(event_log).
@@ -106,10 +135,10 @@ def plot_primary_and_secondary_change_series(primary_and_secondary_change_series
     secondary_change_series_dict = primary_and_secondary_change_series[1]
     
     n = len(secondary_change_series_dict.keys())
-    rows = int(math.ceil(n / columns))
+    rows = max(1, int(math.ceil(n / columns))) # set the row count to at least 1
 
     gs = gridspec.GridSpec(rows, columns)
-    fig = plt.figure(dpi=200, figsize = (8,8))
+    fig = plt.figure(dpi=200, figsize = (8,2*rows))
     
     # get sorted attribute list
     attribute_list = sorted(list(secondary_change_series_dict.keys()))
@@ -134,3 +163,5 @@ def plot_primary_and_secondary_change_series(primary_and_secondary_change_series
     fig.legend(handles=legend_elements, loc='lower center', bbox_to_anchor=(0.5, -0.05))
     
     plt.show()
+
+    return plt

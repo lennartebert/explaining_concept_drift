@@ -1,5 +1,6 @@
 from opyenxes.model import XAttributeLiteral
 import numpy as np
+from scipy import stats
 
 REOCCURING_DRIFT_MEAN_LENGTH = 20
 REOCCURING_DRIFT_STANDARD_DEVIATION = 4
@@ -25,7 +26,8 @@ class AttributeGenerator:
                 
         # create a list that holds information about which attribute drift explains which change point
         self.change_point_explanations = []
-    
+
+
     def _combine_concepts(self, baseline_data, drift_point, drifted_data, drift_type):
         """Combine different concepts into one data stream.
         
@@ -82,7 +84,7 @@ class AttributeGenerator:
             # update the trace attribute dictionary
             trace.set_attributes(trace_attributes)
     
-    def generate_categorical_attribute(self,
+    def add_categorical_attribute(self,
                                        attribute_name,
                                        distribution, 
                                        attribute_level='trace'):
@@ -101,13 +103,14 @@ class AttributeGenerator:
         # write the new data into the log
         self._write_attribute_into_log(attribute_name, attribute_data, attribute_level)
         
-    def generate_drifting_categorical_attribute(self, 
+    def add_drifting_categorical_attribute(self, 
                                        attribute_name, 
                                        base_distribution,
                                        drifted_distribution,
                                        explain_change_point,
                                        drift_type = 'sudden',
-                                       attribute_level = 'trace'):
+                                       attribute_level = 'trace',
+                                       standard_deviation_offset_explain_change_point = 0):
         """Generates a categorical attribute that exhibits drift behavior at a certain drift point.
         
         Args:
@@ -115,16 +118,24 @@ class AttributeGenerator:
             base_distribution: Array with probabilities for each categorical value. Serves as the baseline.
             drifted_distribution: Array with probabilities for each categorical value. Used to generate the the drifted data.
             explain_change_point: Which change point to explain.
-            drift_type: 'sudden' or reoccurring. The type of data drift.            
+            drift_type: 'sudden' or reoccurring. The type of data drift.   
+            sd_offset_explain_change_point: How far the attribute drift shall be offsetted from the explainable change point. Measured in standard deviation of a normal distribution.
         """
+
         # generate the baseline data
         baseline_data = self._generate_categorical_data(base_distribution)
         
         # generate the changed data
         drifted_data = self._generate_categorical_data(drifted_distribution)
         
+        # get change point of categorical attribute
+        mean = 0
+        sd = standard_deviation_offset_explain_change_point
+        offset_from_explainable_change_point = int(abs(np.random.normal(loc=mean, scale=sd)))
+        change_point = explain_change_point - offset_from_explainable_change_point
+
         # combine the baseline and drifted data
-        combined_data = self._combine_concepts(baseline_data, explain_change_point, drifted_data, drift_type)
+        combined_data = self._combine_concepts(baseline_data, change_point, drifted_data, drift_type)
         
         # write the new data into the log
         self._write_attribute_into_log(attribute_name, combined_data, attribute_level)
@@ -134,6 +145,122 @@ class AttributeGenerator:
         change_point_info['attribute_name'] = attribute_name
         change_point_info['base_distribution'] = base_distribution
         change_point_info['explain_change_point'] = explain_change_point
+        change_point_info['change_point'] = change_point
         change_point_info['drift_type'] = drift_type
         
         self.change_point_explanations.append(change_point_info)
+    
+
+def _get_distribution(attribute_value_count):
+    """Get a single distribution for a given number of values.
+    
+    Args:
+        number_values: How many different values the distribution should have.
+    
+    Returns:
+        A probability distribution.
+    """
+    # use the Dirichlet distribution
+    distribution = np.random.dirichlet(np.ones(attribute_value_count)).tolist()
+    return distribution
+
+
+def _get_drifted_distributions(attribute_value_count, change_type=None):
+    """Get two distributions, the baseline distribution and the drifted distribution.
+    
+    The change_type determines in which regard both are different.
+    
+    The two distributions are guaranteed to be significantly different at 10 observations.
+    
+    Args:
+        attribute_value_count: How many attribute values there are.
+        change_type: 'new_value', 'new_distribution'. New value introduces a new value in the changed distribution. New distribution completely changes the new distribution.
+    
+    Returns:
+        (baseline_distribution, drifted_distribution) tuple
+    """
+    if attribute_value_count < 2: raise Exception('Must generate at least 2 attribute values.')
+    
+    if change_type is None:
+        change_type = np.random.choice(['new_value', 'overproportional_gain', 'independent_new'])
+    
+    # get the baseline distribution
+    baseline_distribution = None
+    if change_type == 'new_value':
+        baseline_distribution = _get_distribution(attribute_value_count - 1)
+        # add a 0% probability item
+        baseline_distribution.append(0)
+    else:
+        baseline_distribution = _get_distribution(attribute_value_count)
+        
+    drifted_distribution_found = False
+    drifted_distribution = None
+    
+    while not drifted_distribution_found:
+        if change_type == 'new_value':
+            new_value_probability = np.random.random()
+
+            drifted_distribution = baseline_distribution.copy()
+            drifted_distribution = list(np.array(drifted_distribution) * (1 - new_value_probability))
+            drifted_distribution[-1] = new_value_probability
+        else:
+            drifted_distribution = _get_distribution(attribute_value_count)
+        
+        hellinger_distance = np.sqrt(np.sum((np.sqrt(baseline_distribution) - np.sqrt(drifted_distribution)) ** 2)) / np.sqrt(2)
+        
+        if hellinger_distance > 0.3:
+            drifted_distribution_found = True
+
+    return baseline_distribution, drifted_distribution
+
+
+def create_and_populate_attribute_generator(event_log, 
+    change_points,
+    count_relevant_attributes,
+    count_irrelevant_attributes,
+    cp_explanations_per_relevant_attribute=1,
+    number_attribute_values=3,
+    type_of_drift='sudden',
+    type_of_change='mixed',
+    standard_deviation_offset_explain_change_point=0):
+    """Given an pm4py event log, add synthetic attribute data.
+    """
+    ag = AttributeGenerator(event_log, change_points)
+
+    # generate drifted attributes
+    for attribute_index in range(count_relevant_attributes):
+        attribute_name = f'relevant_attribute_{attribute_index + 1}'
+        
+        # insert as many drifts as shall be explainable by a change point
+        for _ in range(cp_explanations_per_relevant_attribute):
+
+            # get the distributions
+            # if type of change is set to 'mixed', choose the change type
+            this_change_type = None
+            if type_of_change is None or type_of_change == 'mixed':
+                this_change_type = np.random.choice(['new_value', 'new_distribution'])
+            else:
+                this_change_type = type_of_change
+
+            # generate the base and drifted distribution
+            base_distribution, drifted_distribution = _get_drifted_distributions(number_attribute_values, 
+                                                                            change_type=this_change_type)
+
+            # get change point to explain
+            explain_cp = int(np.random.choice(change_points))
+            
+            ag.add_drifting_categorical_attribute(attribute_name,
+                                            base_distribution,
+                                            drifted_distribution=drifted_distribution,
+                                            explain_change_point=explain_cp,
+                                            drift_type=type_of_drift,
+                                            standard_deviation_offset_explain_change_point=standard_deviation_offset_explain_change_point)
+    
+    # generate attributes that did not drift
+    for attribute_index in range(count_irrelevant_attributes):
+        attribute_name = f'irrelevant_attribute_{attribute_index + 1}'
+        distribution = _get_distribution(number_attribute_values)
+        ag.add_categorical_attribute(attribute_name, distribution)
+    
+    # return the attribute_generator
+    return ag

@@ -131,3 +131,5 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+ProDrift2.5/ProDrift2.5.jar
+ProDrift2.5/readme.docx

@@ -2,8 +2,12 @@
 """
 
 import pandas as pd
+import numpy as np
+import subprocess
 
 from processdrift.framework import feature_extraction
+from processdrift.framework import windowing
+import pm4py
 
 class DriftDetector:
     """The drift detector gets a feature's change over time and can retrieve the according change points.
@@ -36,23 +40,74 @@ class DriftDetector:
             return self.feature_extractor.name
         else:
             return self._name
-    
-    def get_change_series(self, event_log):
+
+
+    def get_changes(self, event_log, around_traces=None, max_distance=None):
+        """Get changes in the selected feature from an event log.
+
+        The search for changes can be restricted to the area of max_distance around traces specified in a list.
+
+        Args:
+            event_log: A pm4py event log.
+            around_traces: List of trace numbers. Only look at changes around traces.
+            max_distance: Maximum distance around each trace to look for a change.
+
+        Returns:
+            Dictionary with change points and change series: {change_points: [...], change_series: pandas.Series}
+        """
+
+        # get the change series
+        change_series = self._get_change_series(event_log, around_traces=around_traces, max_distance=max_distance)
+
+        # get the change points
+        change_points = self._get_change_points(change_series)
+
+        result = {
+            'change_points': change_points,
+            'change_series': change_series
+        }
+
+        return result
+
+    def _get_change_series(self, event_log, around_traces, max_distance):
         """Get the change over time from the event log.
         
         Args:
             event_log: A pm4py event log.
+            around_traces: List of trace numbers. Only look at changes around traces.
+            max_distance: Maximum distance around each trace to look for a change.
             
         Returns:
             The comparison result over time.
         """
         change_dictionary = {}
+
+        # make sure that around_traces is sorted
+        around_traces.sort()
         
         # get windows for comparison
         for window_a, window_b in self.window_generator.get_windows(event_log):
+            # check if around_traces is set, if yes, then continue to next window if this one is not in scope
+            is_around_trace = False
+            if around_traces is not None:
+                window_location = window_b.start
+                for trace_location in around_traces:
+                    if trace_location > window_location + self.window_generator.window_size:
+                        break
+                    elif abs(trace_location - window_location) <= max_distance:
+                        is_around_trace = True
+            
+            if not is_around_trace:
+                change_dictionary[window_b.start] = None
+                continue
+
             # get features for each window
             features_window_a = self.feature_extractor.extract(window_a.log)
             features_window_b = self.feature_extractor.extract(window_b.log)
+            
+            # update window size
+            if isinstance(self.window_generator, windowing.AdaptiveWindowGenerator):
+                self.window_generator.update_window_size(features_window_a, features_window_b)
             
             # print(pd.concat([features_window_a, features_window_b], axis=1))# , right_index=True, left_index=True))
             
@@ -64,64 +119,188 @@ class DriftDetector:
         
         change_series = pd.Series(change_dictionary)
         return change_series
+
+
+    # def _get_change_points(self, event_log):
+    #     """Get the change points for a given event log using the defined threshold.
+        
+    #     Args:
+    #         event_log: A pm4py event log.
+        
+    #     Returns:
+    #         List of change points.
+    #     """
+    #     change_series = self.get_change_series(event_log)
+        
+    #     change_points = self.get_change_points_from_series(change_series)
+        
+    #     return change_points
     
-    def get_change_points(self, event_log):
-        """Get the change points for a given event log using the defined threshold.
+
+    def _get_change_points(self, series):
+        """Gets a list of changepoints from a series of observations based on a threshold. 
+        
+        A change point is registered if the series values are below the threshold for the duration of 'min_observations_below'. 
+        Change points will only be flagged if there is at least a distance of 'min_distance_change_streaks' between streaks of observations below the change point.
         
         Args:
-            event_log: A pm4py event log.
+            series: Pandas series with observations.
             
         Returns:
             List of change points.
         """
-        change_series = self.get_change_series(event_log)
-        
-        change_points = _get_change_points_from_series(change_series, self.threshold, self.min_observations_below, self.min_distance_change_streaks)
-        
-        return change_points
-    
+        series_below_threshold = series <= self.threshold
+        below_threshold_counts = series_below_threshold * (series_below_threshold.groupby((series_below_threshold != series_below_threshold.shift()).cumsum()).cumcount() + 1)
 
-def _get_change_points_from_series(series, threshold, min_observations_below, min_distance_change_streaks):
-    """Gets a list of changepoints from a series of observations based on a threshold. 
-    
-    A change point is registered if the series values are below the threshold for the duration of 'min_observations_below'. 
-    Change points will only be flagged if there is at least a distance of 'min_distance_change_streaks' between streaks of observations below the change point.
-    
-    Args:
-        series: Pandas series with observations.
-        threshold: Threshold for determening whether an observation is a change point candidate.
-        min_observations_below: Minimum number of observations below the change point (acts as a filter).
-        min_distance_change_streaks: Minimum distance between change streaks (acts as a filter).
-        
-    Returns:
-        List of change points.
-    """
-    series_below_threshold = series <= threshold
-    below_threshold_counts = series_below_threshold * (series_below_threshold.groupby((series_below_threshold != series_below_threshold.shift()).cumsum()).cumcount() + 1)
+        change_points = []
+        last_change_streak_ended = None
+        for index, streak_count in below_threshold_counts.iteritems():  
+            # check if the streak is exactly the minimum number of observations
+            if streak_count == self.min_observations_below:
+                
+                change_point_candidate = index - self.min_observations_below + 1
 
-    change_points = []
-    last_change_streak_ended = None
-    for index, streak_count in below_threshold_counts.iteritems():  
-        # check if the streak is exactly the minimum number of observations
-        if streak_count == min_observations_below:
-
-            change_point_candidate = index - min_observations_below + 1
-
-            # definitely enter the change point if this is the first streak that was seen
-            if last_change_streak_ended is None:
-                change_points.append(change_point_candidate)
-            else:
-                # get distance to last streak end
-                distance_to_last_streak = change_point_candidate - last_change_streak_ended - 1
-
-                if distance_to_last_streak >= min_distance_change_streaks:
+                # definitely enter the change point if this is the first streak that was seen
+                if last_change_streak_ended is None:
                     change_points.append(change_point_candidate)
+                else:
+                    # get distance to last streak end
+                    distance_to_last_streak = change_point_candidate - last_change_streak_ended - 1
 
-        # populate the last change streak if the count is not 0
-        if streak_count >= min_observations_below:
-            last_change_streak_ended = index
+                    if distance_to_last_streak >= self.min_distance_change_streaks:
+                        change_points.append(change_point_candidate)
 
-    return change_points
+            # populate the last change streak if the count is not 0
+            if streak_count >= self.min_observations_below:
+                last_change_streak_ended = index
+
+        return change_points
+
+
+class DriftDetectorProDrift(DriftDetector):
+    """Leverages ProDrift for drift detection purposes."""
+    def __init__(self, 
+                    path_to_prodrift, 
+                    drift_detection_mechanism='runs',
+                    window_size=200,
+                    window_mode='adaptive',
+                    detect_gradual_as_well=False):
+        self.path_to_prodrift = path_to_prodrift
+        self.drift_detection_mechanism = drift_detection_mechanism
+        self.window_size = window_size
+        self.window_mode = window_mode
+        self.detect_gradual_as_well = detect_gradual_as_well
+
+    def get_changes(self, event_log):
+        """Get changes in the selected feature from an event log.
+
+        The search for changes can be restricted to the area of max_distance around traces specified in a list.
+
+        Args:
+            event_log: A pm4py event log.
+
+        Returns:
+            Dictionary with change points and change series: {change_points: [...], change_series: pandas.Series}
+        """
+ 
+        # get the change points
+        change_points = self._get_change_points(event_log)
+
+        # get the change series
+        change_series = self._get_change_series(change_points)
+        
+        result = {
+            'change_points': change_points,
+            'change_series': change_series
+        }
+
+        return result
+
+    def _get_change_series(self, event_log):
+        # For the ProDrift drift detector, we do not have the scalar value of the change measure.
+        # Therefore, the change series is considered always 1, as long as there is no change point detected.
+
+        # get the change points
+        change_points = self.get_change_points(event_log)
+
+        # get the number of traces in the log
+        number_traces = len(event_log)
+
+        # create the numpy array with all 1 values
+        change_series_array = np.ones((number_traces,), dtype=int)
+
+        # replace each one with a 0 at the change point
+        for change_point in change_points:
+            change_series_array[change_point] = 0
+        
+        # get as pandas series
+        change_series = pd.Series(change_series_array)
+
+        return change_series
+
+    # def get_change_points_from_series(self, series):
+    #     """Gets a list of changepoints from a series of observations based on a threshold. 
+        
+    #     The ProDrift implementation will just return all the points in the change_series where the value == 0.
+
+    #     Args:
+    #         series: Pandas series with observations.
+            
+    #     Returns:
+    #         List of change points.
+    #     """
+
+    #     indeces_change_points = series[series == 0].index
+
+    #     # convert to list
+
+    #     change_points = list(indeces_change_points)
+
+    #     return change_points
+
+    def _get_change_points(self, event_log):
+        # save event log to temporary file
+        import tempfile
+        import os
+        
+        with tempfile.TemporaryDirectory() as tmp:
+            # save the event log in a temporary directory
+            event_log_path = os.path.join(tmp, 'event_log.xes')
+            pm4py.objects.log.exporter.xes.exporter.apply(event_log, event_log_path)
+
+            # build the ProDrift command
+            command = f"java -jar \"{self.path_to_prodrift}\" -fp \"{event_log_path}\"" \
+                f" -ddm {self.drift_detection_mechanism}"
+            
+            if self.window_size is not None:
+                command += f" -ws {self.window_size}"
+            
+            if self.window_mode is not None:
+                if self.window_mode == 'adaptive':
+                    pass # adaptive mode is the default
+                else:
+                    command += " -fwin"
+
+            if self.detect_gradual_as_well:
+                command += " -gradual"
+
+            print(command)
+
+            # run the command
+            output = str(subprocess.check_output(command))
+            print(output)
+
+            # get the change points
+            change_points = []
+            for line in output.split('\\n'):
+                # see if the output line contains a drift point
+                if 'drift detected at trace: ' in line:
+                    line_starting_with_trace_number = line.split('drift detected at trace: ')[1]
+                    trace_number = line_starting_with_trace_number.split(' ')[0]
+                    change_points.append(int(trace_number))
+
+            return change_points
+    
 
 class DriftDetectorTrueKnown(DriftDetector):
     """A drift detector to be used if the true change points are known.
@@ -205,3 +384,4 @@ def get_all_attribute_drift_detectors(log, window_generator, population_comparer
         drift_detectors.append(drift_detector)
     
     return drift_detectors
+
