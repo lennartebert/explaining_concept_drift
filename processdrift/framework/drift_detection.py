@@ -316,8 +316,15 @@ class DriftDetectorTrueKnown(DriftDetector):
         self.threshold = None
         self._name = 'Drift Detector True Known'
     
+    def get_changes(self, event_log):
+        result = {
+            'change_points': self.change_points,
+            'change_series': self._get_change_series(event_log)
+        }
+
+        return result
     
-    def get_change_series(self, event_log):
+    def _get_change_series(self, event_log):
         """Get the change over time from the known drift points.
         
         Args:
@@ -336,7 +343,7 @@ class DriftDetectorTrueKnown(DriftDetector):
 
         return change_series
     
-    def get_change_points(self, event_log):
+    def _get_change_points(self, event_log):
         """Get the change points as presented when initialized.
         
         Args:

@@ -41,14 +41,19 @@ def evaluate_explanations(true_change_explanations, detected_change_explanations
 
                 # we can break here because the detected change points have been sorted
                 break
-
-    precision = number_of_correct_detections / number_of_detections
-    recall = number_of_correct_detections / number_of_true_changes
+    
+    precision = None
+    if number_of_detections > 0:
+        precision = number_of_correct_detections / number_of_detections
+    
+    recall = None
+    if number_of_true_changes > 0:
+        recall = number_of_correct_detections / number_of_true_changes
 
     # get the f1 score (harmonic mean of recall and precision)
     # only calcualte f1 if precision and recall are both > 0
     f1_score = None
-    if recall > 0 and precision > 0:
+    if (recall is not None) and (precision is not None) and (recall > 0) and (precision > 0):
         f1_score =  2 / ((1/recall) + (1/precision))
     
     # only calculate the mean lag if there where any lags
@@ -85,15 +90,20 @@ def aggregate_cp_explanation_results(results_list):
         if 'number_experiments' in result:
             all_experiment_counts += result['number_experiments']
 
-    all_number_experiments += len(results)
+    all_number_experiments += len(results_list)
 
-    precision = all_correct_detections / all_detections
-    recall = all_correct_detections / all_true_changes
+    precision = None
+    if all_detections > 0:
+        precision = all_correct_detections / all_detections
+    
+    recall = None
+    if all_true_changes > 0:
+        recall = all_correct_detections / all_true_changes
 
     # get the f1 score (harmonic mean of recall and precision)
     # only calcualte f1 if precision and recall are both > 0
     f1_score = None
-    if recall > 0 and precision > 0:
+    if (recall is not None) and (precision is not None) and (recall > 0) and (precision > 0):
         f1_score =  2 / ((1/recall) + (1/precision))
     
     # only calculate the mean lag if there where any lags

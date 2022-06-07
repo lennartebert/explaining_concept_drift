@@ -1,5 +1,6 @@
 trace clustering ranking.ipynb
 data/data_dict.json
+results/*
 
 # Standard github Python .gitignore
 # Byte-compiled / optimized / DLL files

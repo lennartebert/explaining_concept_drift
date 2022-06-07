@@ -169,6 +169,9 @@ class HellingerDistanceComparer(ProbabilityDistributionComparer):
         comparison_measure = 1 - hellinger_distance
         return comparison_measure
 
+    def __repr__(self):
+        return 'HellingerDistanceComparer'
+
 
 def get_frequency_counts(observations):
     """Get frequency counts from a list of observations.
@@ -223,7 +226,7 @@ class ChiSquaredComparer(PopComparer):
         
         # make sure p is never NaN
         p = p.fillna(0)
-        
+
         oversampled_observations = np.random.choice(list(merged_df.index), size=missing_observed_samples, p=p)
 
         # convert to pandas series

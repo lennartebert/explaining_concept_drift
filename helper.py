@@ -4,6 +4,7 @@ import json
 import os
 import pandas as pd
 import numpy as np
+import csv
 
 from opyenxes.data_in import XesXmlParser
 from opyenxes.data_out import XesXmlSerializer
@@ -272,6 +273,51 @@ def get_simple_change_point_list_from_explainer(change_point_explanations):
     cp_tuple_list = [(cp_explanation['change_point'], cp_explanation['detector']) for cp_explanation in change_point_explanations_list]
     
     return cp_tuple_list
+
+def append_config_results(results_file_path, event_log_file_path, configuration_dict, results_dict, compute_time):
+    configuration_dict_prepended = {f'config_{key}': val for key, val in configuration_dict.items()}
+    merged_dictionary = configuration_dict_prepended | results_dict
+
+    merged_dictionary['config_event_log_file_path'] = event_log_file_path
+    merged_dictionary['compute_time'] = compute_time
+
+    field_names = list(merged_dictionary.keys())
+
+    # create results_file_path if not exists
+    if not os.path.exists(os.path.dirname(results_file_path)):
+        # Create a new directory because it does not exist 
+        os.makedirs(os.path.dirname(results_file_path))
+
+    file_exists = os.path.isfile(results_file_path)
+
+    with open(results_file_path, 'a') as f_object:
+        dictwriter_object = csv.DictWriter(f_object, fieldnames=field_names)
+        
+        # create the header row if file did not exist
+        if not file_exists:
+            dictwriter_object.writeheader()
+    
+        # Pass the dictionary as an argument to the Writerow()
+        dictwriter_object.writerow(merged_dictionary)
+    
+        # Close the file object
+        f_object.close()
+
+def get_all_files_in_dir(dir, include_files_in_subdirs=True):
+    # get all files in directory
+    files_in_dir = os.listdir(dir)
+    all_files = list()
+    # Iterate over all the entries
+    for entry in files_in_dir:
+        # Create full path
+        file_path = os.path.join(dir, entry)
+        # If entry is a directory then get the list of files in this directory 
+        if include_files_in_subdirs and os.path.isdir(file_path):
+            all_files = all_files + get_all_files_in_dir(file_path, include_files_in_subdirs)
+        else:
+            all_files.append(file_path)
+                
+    return all_files
 
 # def save_experiment_results(experiment_name,
 #     dataset,
