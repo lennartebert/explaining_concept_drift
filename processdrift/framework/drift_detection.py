@@ -41,7 +41,6 @@ class DriftDetector:
         else:
             return self._name
 
-
     def get_changes(self, event_log, around_traces=None, max_distance=None):
         """Get changes in the selected feature from an event log.
 
@@ -207,7 +206,7 @@ class DriftDetectorProDrift(DriftDetector):
         change_points = self._get_change_points(event_log)
 
         # get the change series
-        change_series = self._get_change_series(change_points)
+        change_series = self._get_change_series(event_log, change_points)
         
         result = {
             'change_points': change_points,
@@ -216,19 +215,16 @@ class DriftDetectorProDrift(DriftDetector):
 
         return result
 
-    def _get_change_series(self, event_log):
+    def _get_change_series(self, event_log, change_points): # TODO diverging implementation from derived class!
         # For the ProDrift drift detector, we do not have the scalar value of the change measure.
         # Therefore, the change series is considered always 1, as long as there is no change point detected.
-
-        # get the change points
-        change_points = self.get_change_points(event_log)
 
         # get the number of traces in the log
         number_traces = len(event_log)
 
         # create the numpy array with all 1 values
         change_series_array = np.ones((number_traces,), dtype=int)
-
+        
         # replace each one with a 0 at the change point
         for change_point in change_points:
             change_series_array[change_point] = 0
@@ -283,7 +279,7 @@ class DriftDetectorProDrift(DriftDetector):
 
             if self.detect_gradual_as_well:
                 command += " -gradual"
-
+            
             print(command)
 
             # run the command

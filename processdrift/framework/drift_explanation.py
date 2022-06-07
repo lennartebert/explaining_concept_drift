@@ -50,25 +50,7 @@ class DriftExplainer():
         return primary_changes, secondary_changes_dictionary
 
 
-    # def get_primary_and_secondary_change_series(self, event_log, max_distance=None):
-    #     """Get the changes registered in the primary and secondary drift detector as a Pandas Series.
-        
-    #     Args:
-    #         event_log: A pm4py event log.
-    #         max_distance: Maximum distance between a primary and secondary change point so that the secondary change point is evaluated.
-            
-    #     Returns:
-    #         (primary_change_series, secondary_change_series_dict): The primary change series and a dictionary with the change series for each secondary drift detector.
-    #     """
-    #     primary_change_series = self.primary_drift_detector.get_change_series(event_log)
-    #     secondary_change_series_dict = {}
-    #     for secondary_drift_detector in self.secondary_drift_detectors:
-    #         secondary_change_points = secondary_drift_detector.get_change_series(event_log)
-    #         secondary_change_series_dict[secondary_drift_detector.name] = secondary_change_points
-        
-    #     return primary_change_series, secondary_change_series_dict
-    
-    def attribute_importance_per_primary_change_point(self, primary_and_secondary_changes, max_distance=None):
+def attribute_importance_per_primary_change_point(primary_and_secondary_changes, max_distance=None):
         """Get the change points in the primary drift detector and all secondary change points that presume.
         
         Args:
@@ -78,24 +60,21 @@ class DriftExplainer():
         Returns:
             (primary_change_points, change_point_explanations): The primary change points and explanations for each.
         """
-        # get process concept drift points
-        primary_change_points = self.primary_drift_detector.get_change_points(event_log)
-        
-        # get secondary drifts
-        # the resulting dictionary will have the format
-        # {detector_name: change_point_list}, e.g., {'attribute XXX': [492, 2849]}
+
+        primary_change_points = primary_and_secondary_changes[0]['change_points']
+        secondary_changes_dict = primary_and_secondary_changes[1]
         
         all_secondary_change_points = {}
-        for secondary_drift_detector in self.secondary_drift_detectors:
-            secondary_change_points = secondary_drift_detector.get_change_points(event_log)
-            all_secondary_change_points[secondary_drift_detector.name] = secondary_change_points
-        
+        for detector_name, secondary_changes in secondary_changes_dict.items():
+            secondary_change_points = secondary_changes['change_points']
+            all_secondary_change_points[detector_name] = secondary_change_points
+
         # rank attributes by closest secondary change point before primary change point
         # for that, create a list of tuples with all secondary change points and detector names
         secondary_time_detector_tuples = []
-        for drift_detector, change_points in all_secondary_change_points.items():
+        for drift_detector_name, change_points in all_secondary_change_points.items():
             for change_point in change_points:
-                secondary_time_detector_tuples.append((change_point, drift_detector))
+                secondary_time_detector_tuples.append((change_point, drift_detector_name))
         
         # sort the secondary time detector tuples
         secondary_time_detector_tuples = sorted(secondary_time_detector_tuples)
@@ -108,7 +87,7 @@ class DriftExplainer():
                 distance = secondary_change_point - primary_change_point
                 
                 # keep distance in range max_distance
-                if max_distance is not None and abs(distance) >= max_distance:
+                if max_distance is not None and abs(distance) > max_distance:
                     continue
                 
                 distances_to_change_point.append({
@@ -124,34 +103,51 @@ class DriftExplainer():
         
         return change_point_explanations
 
-def plot_primary_and_secondary_change_series(primary_and_secondary_change_series, columns=2):
-    """Plots the primary and secondary change series returned by DriftExplainer.get_primary_and_secondary_change_series(event_log).
+def plot_primary_and_secondary_changes(primary_and_secondary_change, columns=2):
+    """Plots the primary and secondary change series returned by DriftExplainer.get_primary_and_secondary_changes(event_log).
     
     Args:
-        primary_and_secondary_change_series: The primary and secondary change series as returned by DriftExplainer.get_primary_and_secondary_change_series(event_log).
+        primary_and_secondary_change: The primary and secondary change series as returned by DriftExplainer.get_primary_and_secondary_changes(event_log).
     """
     # get the primary and secondary change
-    primary_change_series = primary_and_secondary_change_series[0]
-    secondary_change_series_dict = primary_and_secondary_change_series[1]
+    primary_change_series = primary_and_secondary_change[0]['change_series']
+    secondary_change_dict = primary_and_secondary_change[1]
     
-    n = len(secondary_change_series_dict.keys())
+    n = len(secondary_change_dict.keys())
     rows = max(1, int(math.ceil(n / columns))) # set the row count to at least 1
 
     gs = gridspec.GridSpec(rows, columns)
     fig = plt.figure(dpi=200, figsize = (8,2*rows))
     
     # get sorted attribute list
-    attribute_list = sorted(list(secondary_change_series_dict.keys()))
+    attribute_list = sorted(list(secondary_change_dict.keys()))
     
     # plot all secondary values
-    for i, key in enumerate(attribute_list):
-        series = secondary_change_series_dict[key]
+    for i, attribute_name in enumerate(attribute_list):
+        secondary_change_series = secondary_change_dict[attribute_name]['change_series']
+        secondary_change_points = secondary_change_dict[attribute_name]['change_points']
+
         ax = fig.add_subplot(gs[i])
-        ax.plot(series)
+        
         ax.plot(primary_change_series, color='red', linestyle='dashed')
+        ax.plot(secondary_change_series)
+        
+        # todo: add primary and secondary change points with scatter plot
+        x = secondary_change_points
+        y = list(secondary_change_series.loc[secondary_change_points])
+        ax.scatter(x=x, 
+            y=y,
+            marker='x',
+            )
+        
+        for i, secondary_change_point in enumerate(x):
+            change_point_trace = x[i]
+            change_point_y = y[i]
+            ax.annotate(f'({change_point_trace}, {change_point_y:.2f})', (x[i], y[i]))
+
         # set the y axis to 0 - 1
         plt.ylim(0, 1)
-        ax.title.set_text(key)
+        ax.title.set_text(attribute_name)
     
     # add a title
     fig.suptitle('Attribute Change over Time')
