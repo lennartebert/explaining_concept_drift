@@ -218,47 +218,40 @@ def create_and_get_new_path(old_file_path, old_base_path, new_base_path, new_ext
     
     return new_path
 
+def get_change_points_maardji_et_al_2013(size):
+    change_points = [int((i + 1)*size/10) for i in range(9)]
+    return change_points
 
-def add_synthetic_attributes(dataset,
+def add_synthetic_attributes(input_file_path,
     output_file_path,
+    change_points,
     count_relevant_attributes,
     count_irrelevant_attributes,
-    cp_explanations_per_relevant_attribute=1,
     number_attribute_values=3,
     type_of_drift='sudden',
     type_of_change='mixed',
     standard_deviation_offset_explain_change_point=0):
     """Given an pm4py event log, add synthetic attribute data.
     """
-    # get the dataset information
-    dataset_info = get_data_information(dataset)   
-    
-    # get the change points
-    change_points = dataset_info['change_points']
 
     # load the log
-    opyenxes_log = opyenxes_read_xes(dataset_info['file_path'])
+    opyenxes_log = opyenxes_read_xes(input_file_path)
     
     # add synthetic attributes to log
     ag = generate_attributes.create_and_populate_attribute_generator(opyenxes_log, 
                                                                     change_points,
                                                                     count_relevant_attributes,
                                                                     count_irrelevant_attributes,
-                                                                    cp_explanations_per_relevant_attribute,
                                                                     number_attribute_values,
                                                                     type_of_drift,
                                                                     type_of_change,
-                                                                    standard_deviation_offset_explain_change_point)
+                                                                    standard_deviation_offset_explain_change_point=standard_deviation_offset_explain_change_point)
     
     # save the log
     opyenxes_write_xes(ag.opyenxes_log, output_file_path)
 
-    # save the change point explanations
-    dataset_info['file_path'] = output_file_path
-    dataset_info['file_name'] = os.path.basename(output_file_path)
-    dataset_info['has_generated_attributes'] = True
-    dataset_info['change_point_explanations'] = ag.change_point_explanations
-    update_data_dictionary({output_file_path: dataset_info})
+    # return the change points
+    return ag.change_point_explanations
 
 
 def get_simple_change_point_format_from_data_info(data_info):
@@ -280,62 +273,70 @@ def get_simple_change_point_list_from_explainer(change_point_explanations):
     
     return cp_tuple_list
 
-def write_results_complex(
-    experiment_name,
-    dataset_name,
-    dataset_size,
-    configuration,
-    window_strategy,
-    window_size,
-    window_slide_by,
-    pop_comparer,
-    comparison_threshold,
-    max_distance,
-    number_experiments,
-    precision,
-    recall,
-    f1_score,
-    mean_lag,
-    results_file_path
-    ):
+# def save_experiment_results(experiment_name,
+#     dataset,
+#     ):
+#     result = {}
+#     result['dataset_info'] = dataset_info
+#     result['attribute_drift_detector'] = attribute_drift_detector
+#     result['aggregated_results'] = aggregated_results
+#     return
 
-    result = {}
-    result['dataset_name'] = dataset_name
-    result['dataset_size'] = dataset_size
-    result['configuration'] = configuration
-    result['window_strategy'] = window_strategy
-    result['window_size'] = window_size
-    result['window_slide_by'] = window_slide_by
-    result['pop_comparer'] = pop_comparer
-    result['comparison_threshold'] = comparison_threshold
-    result['max_distance'] = max_distance
-    result['number_experiments'] = number_experiments
-    result['precision'] = precision
-    result['recall'] = recall
-    result['f1_score'] = f1_score
-    result['mean_lag'] = mean_lag
+# def write_results_complex(dataset_name,
+#     dataset_size,
+#     configuration,
+#     window_strategy,
+#     window_size,
+#     window_slide_by
+#     pop_comparer,
+#     comparison_threshold,
+#     max_distance,
+#     number_experiments,
+#     precision,
+#     recall,
+#     f1_score,
+#     mean_lag,
+#     results_file_path
+#     ):
+
+#     result = {}
+#     result['dataset_name'] = dataset_name
+#     result['dataset_size'] = dataset_size
+#     result['configuration'] = configuration
+#     result['window_strategy'] = window_strategy
+#     result['window_size'] = window_size
+#     result['window_slide_by'] = window_slide_by
+#     result['pop_comparer'] = pop_comparer
+#     result['comparison_threshold'] = comparison_threshold
+#     result['max_distance'] = max_distance
+#     result['number_experiments'] = number_experiments
+#     result['precision'] = precision
+#     result['recall'] = recall
+#     result['f1_score'] = f1_score
+#     result['mean_lag'] = mean_lag
     
-    if os.path.exists(results_file_path):
-        with open(results_file_path,'r+') as file:
-            # First we load existing data into a dict.
-            all_results_data = json.load(file)
-            # Join new_data with file_data inside emp_details
-            all_results_data.append(result)
-            # Sets file's current position at offset.
-            file.seek(0)
-            # convert back to json.
-            json.dump(all_results_data, file, indent = 4)
-    else:
-        all_results_data = [result]
+    
+#     if os.path.exists(results_file_path):
+#         with open(results_file_path,'r+') as file:
+#             # First we load existing data into a dict.
+#             all_results_data = json.load(file)
+#             # Join new_data with file_data inside emp_details
+#             all_results_data.append(result)
+#             # Sets file's current position at offset.
+#             file.seek(0)
+#             # convert back to json.
+#             json.dump(all_results_data, file, indent = 4)
+#     else:
+#         all_results_data = [result]
 
-        results_path = os.path.dirname(results_file_path)
-        # Check whether the specified path exists or not
-        isExist = os.path.exists(results_path)
+#         results_path = os.path.dirname(results_file_path)
+#         # Check whether the specified path exists or not
+#         isExist = os.path.exists(results_path)
 
-        if not isExist:
-            # Create a new directory because it does not exist 
-            os.makedirs(results_path)
+#         if not isExist:
+#             # Create a new directory because it does not exist 
+#             os.makedirs(results_path)
 
-        # create new file
-        with open(results_file_path, 'w') as file:
-            json.dump(all_results_data, file, indent = 4)
+#         # create new file
+#         with open(results_file_path, 'w') as file:
+#             json.dump(all_results_data, file, indent = 4)

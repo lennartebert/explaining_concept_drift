@@ -218,7 +218,6 @@ def create_and_populate_attribute_generator(event_log,
     change_points,
     count_relevant_attributes,
     count_irrelevant_attributes,
-    cp_explanations_per_relevant_attribute=1,
     number_attribute_values=3,
     type_of_drift='sudden',
     type_of_change='mixed',
@@ -227,38 +226,42 @@ def create_and_populate_attribute_generator(event_log,
     """
     ag = AttributeGenerator(event_log, change_points)
 
+
+    # check that the number of relevant attributes does not exceed the number of changepoints
+    if count_relevant_attributes > len(change_points):
+        raise Exception(f"Not enough relevant attributes for number of change points. {count_relevant_attributes} relevant attributes for {len(change_points)} change points.")
+
     # generate drifted attributes
     for attribute_index in range(count_relevant_attributes):
-        attribute_name = f'relevant_attribute_{attribute_index + 1}'
+        attribute_name = f'relevant_attribute_{(attribute_index + 1):02d}'
         
-        # insert as many drifts as shall be explainable by a change point
-        for _ in range(cp_explanations_per_relevant_attribute):
+        # relevant_attribute_011 explains cp1...
 
-            # get the distributions
-            # if type of change is set to 'mixed', choose the change type
-            this_change_type = None
-            if type_of_change is None or type_of_change == 'mixed':
-                this_change_type = np.random.choice(['new_value', 'new_distribution'])
-            else:
-                this_change_type = type_of_change
+        # get the distributions
+        # if type of change is set to 'mixed', choose the change type
+        this_change_type = None
+        if type_of_change is None or type_of_change == 'mixed':
+            this_change_type = np.random.choice(['new_value', 'new_distribution'])
+        else:
+            this_change_type = type_of_change
 
-            # generate the base and drifted distribution
-            base_distribution, drifted_distribution = _get_drifted_distributions(number_attribute_values, 
-                                                                            change_type=this_change_type)
+        # generate the base and drifted distribution
+        base_distribution, drifted_distribution = _get_drifted_distributions(number_attribute_values, 
+                                                                        change_type=this_change_type)
 
-            # get change point to explain
-            explain_cp = int(np.random.choice(change_points))
+        # get change point to explain
+        explain_cp = change_points[attribute_index]
             
-            ag.add_drifting_categorical_attribute(attribute_name,
-                                            base_distribution,
-                                            drifted_distribution=drifted_distribution,
-                                            explain_change_point=explain_cp,
-                                            drift_type=type_of_drift,
-                                            standard_deviation_offset_explain_change_point=standard_deviation_offset_explain_change_point)
+        ag.add_drifting_categorical_attribute(attribute_name,
+                                        base_distribution,
+                                        drifted_distribution=drifted_distribution,
+                                        explain_change_point=explain_cp,
+                                        drift_type=type_of_drift,
+                                        standard_deviation_offset_explain_change_point=standard_deviation_offset_explain_change_point)
     
-    # generate attributes that did not drift
+    # generate attributes that do not drift
     for attribute_index in range(count_irrelevant_attributes):
-        attribute_name = f'irrelevant_attribute_{attribute_index + 1}'
+        attribute_name = f'irrelevant_attribute_{(attribute_index + 1):02d}'
         distribution = _get_distribution(number_attribute_values)
         ag.add_categorical_attribute(attribute_name, distribution)
     
