@@ -53,6 +53,9 @@ class PopComparer(ABC):
         population_1_preprocessed, population_2_preprocessed = self._preprocess(population_1, population_2)
         difference = self._get_comparison_measure(population_1_preprocessed, population_2_preprocessed)
         return difference
+
+    def __repr__(self):
+        return self.__class__.__name__
     
 class KSTestPopComparer(PopComparer):
     """Perform a two-sample Kolmogorov-Smirnov test to compare two populations.
@@ -169,9 +172,6 @@ class HellingerDistanceComparer(ProbabilityDistributionComparer):
         comparison_measure = 1 - hellinger_distance
         return comparison_measure
 
-    def __repr__(self):
-        return 'HellingerDistanceComparer'
-
 
 def get_frequency_counts(observations):
     """Get frequency counts from a list of observations.
@@ -209,35 +209,10 @@ class ChiSquaredComparer(PopComparer):
         pop_2_value_counts = pop_2_series.value_counts()
 
         # create pandas dataframe
-        merged_df = pd.merge(pop_1_value_counts, pop_2_value_counts, how='left', left_index=True, right_index=True)
-
+        merged_df = pd.merge(pop_1_value_counts, pop_2_value_counts, how='outer', left_index=True, right_index=True)
+        
         # replace Na with 0
         merged_df = merged_df.fillna(0)
-
-        # set data type to integer
-        merged_df = merged_df.astype('int')
-
-        # sum the expected values and oversample the observed values to fit
-        missing_observed_samples = sum(merged_df['expected']) - sum(merged_df['observed'])
-        missing_observed_samples
-
-        # draw the sample
-        p = merged_df['observed'] / sum(merged_df['observed'])
-        
-        # make sure p is never NaN
-        p = p.fillna(0)
-
-        oversampled_observations = np.random.choice(list(merged_df.index), size=missing_observed_samples, p=p)
-
-        # convert to pandas series
-        oversampled_series = pd.Series(oversampled_observations)
-        oversampled_value_counts = oversampled_series.value_counts()
-
-        # add to observed axis 
-        merged_df['observed'] = merged_df['observed'].add(oversampled_value_counts, fill_value=0)
-
-        # set data type to integer
-        merged_df = merged_df.astype('int')
 
         return merged_df['expected'].values, merged_df['observed'].values
     
@@ -253,7 +228,14 @@ class ChiSquaredComparer(PopComparer):
         """
         # the populations have been transformed into frequency counts in preprocessing
 
-        test_statistics, p_value = scipy.stats.chisquare(population_2, population_1)
+        p_value = None
+
+        count_expected_values_smaller_equal_5 = sum(population_1 <= 5)
+        
+        # check that there are always more than 5 expected values
+        if count_expected_values_smaller_equal_5 == 0:
+            test_statistics, p_value = scipy.stats.chisquare(population_2, population_1)
+        
         return p_value
 
 

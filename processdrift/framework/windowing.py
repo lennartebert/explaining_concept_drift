@@ -122,7 +122,7 @@ class FixedSizeWindowGenerator(WindowGenerator):
                               window_b_end)
 
             windows = (window_a, window_b)
-
+            
             # yield the result
             yield windows
 
