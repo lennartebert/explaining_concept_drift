@@ -3,6 +3,7 @@
 
 from abc import ABC, abstractmethod
 import numpy as np
+import pm4py
 
 from processdrift import features
 
@@ -43,6 +44,7 @@ class AttributeFeatureExtractor(FeatureExtractor):
         Args:
             attribute_level: 'trace' or 'event'. Whether the attribute is on trace or event level.
             attribute_name: Name of the attribute.
+            included_none: If the attribute is not set for the event/trace, include "None" in the result list.
         """
         super().__init__(f'{attribute_name}')
         self.attribute_level = attribute_level
@@ -61,7 +63,17 @@ class AttributeFeatureExtractor(FeatureExtractor):
         
         if self.attribute_level == 'trace':
             for trace in log:
-                result_list.append(trace.attributes[self.attribute_name])
+                if self.attribute_name in trace.attributes:
+                    result_list.append(trace.attributes[self.attribute_name])
+                else:
+                    result_list.append('Attribute not defined.')
+        elif self.attribute_level == 'event':
+            event_stream = pm4py.convert.convert_to_event_stream(log)
+            for event in event_stream:
+                if self.attribute_name in event:
+                    result_list.append(event[self.attribute_name])
+                else:
+                    result_list.append('Attribute not defined.')
         
         # convert to numpy array
         result_array = np.array(result_list)
@@ -128,8 +140,23 @@ def get_all_trace_attributes(log):
     
     Returns: Set of trace-level attributes in the event log.
     """
-    attribute_set = set()
-    for trace in log:
-        attribute_set.update(trace.attributes)
+    attribute_set = pm4py.statistics.attributes.log.get.get_all_trace_attributes_from_log(log)
     
+    return attribute_set
+
+def get_all_event_attributes(log):
+    """Get all event-level attributes in a pm4py event log.
+    
+    Args:
+        log: pm4py event log.
+    
+    Returns: Set of event-level attributes in the event log.
+    """
+    attribute_set = pm4py.statistics.attributes.log.get.get_all_event_attributes_from_log(log)
+    
+    # needs to remove all trace/case attributes from the attribute set if they occur
+    # case attributes always start with 'case:'
+    case_attributes = [attribute for attribute in attribute_set if attribute.startswith('case:')]
+    attribute_set.difference_update(case_attributes)
+
     return attribute_set

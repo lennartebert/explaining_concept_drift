@@ -35,7 +35,7 @@ class AttributeGenerator:
             baseline_data: The baseline data (original concept).
             drift_point: Point of drift.
             drifted_data: Data for after the drift.
-            drift_type: 'sudden' or 'gradual'. Type of drift, e.g., sudden.
+            drift_type: 'sudden' or 'reoccurring'. Type of drift, e.g., sudden.
         
         Returns:
             The combined data.
@@ -118,7 +118,7 @@ class AttributeGenerator:
             base_distribution: Array with probabilities for each categorical value. Serves as the baseline.
             drifted_distribution: Array with probabilities for each categorical value. Used to generate the the drifted data.
             explain_change_point: Which change point to explain.
-            drift_type: 'sudden' or reoccurring. The type of data drift.   
+            drift_type: 'sudden' or 'reoccurring'. The type of data drift.   
             sd_offset_explain_change_point: How far the attribute drift shall be offsetted from the explainable change point. Measured in standard deviation of a normal distribution.
         """
 

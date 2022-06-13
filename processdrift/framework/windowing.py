@@ -4,6 +4,7 @@
 from abc import ABC, abstractmethod
 import datetime
 import numpy as np
+import pm4py
 
 from pm4py.objects.log.obj import EventStream
 from pm4py.algo.filtering.log.timestamp import timestamp_filter
@@ -87,8 +88,16 @@ class FixedSizeWindowGenerator(WindowGenerator):
             if self.window_type == 'trace': end = len(event_log) - 1 # index of last trace is the end
             elif self.window_type == 'time': end = event_log[-1][-1]['time:timestamp'].replace(tzinfo=None)
         
+        # construct mapping of trace indexes to trace ids for event log filtering
+        # only do so if window_type is trace to avoid unnecessary calculations
+        # get all case ids in sorted list
+        trace_ids_list = []
+        if  self.window_type == 'trace':
+            for trace in event_log:
+                trace_ids_list.append(trace.attributes['concept:name'])
+
         window_a_start = start
-        window_a_end = window_a_start + self.window_size - 1
+        window_a_end = window_a_start + self.window_size - 1 # TODO check if this -1 is wrong
         window_b_start = window_a_start + self.window_offset
         window_b_end = window_b_start + self.window_size - 1
         
@@ -109,11 +118,15 @@ class FixedSizeWindowGenerator(WindowGenerator):
                     window_a_log = timestamp_filter.filter_traces_intersecting(event_log, window_a_start, window_a_end)
                     window_b_log = timestamp_filter.filter_traces_intersecting(event_log, window_b_start, window_b_end)
             elif self.window_type == 'trace':
-                # ignore the inclusion criteria (only makes sense for the time-based approach)
-                window_a_log = event_log[window_a_start:window_a_end+1]
-                window_b_log = event_log[window_b_start:window_b_end+1]
+                # filter the event log only for the cases that fall in between window_x_start, window_x_end...
+                # construct a truth series that is true for indexes window_x_start to window_x_end
+                traces_window_a = trace_ids_list[window_a_start:window_a_end+1]
+                traces_window_b = trace_ids_list[window_b_start:window_b_end+1]
 
-             # package the windows for returning them
+                window_a_log = pm4py.filter_log(lambda t: t.attributes['concept:name'] in traces_window_a, event_log)
+                window_b_log = pm4py.filter_log(lambda t: t.attributes['concept:name'] in traces_window_b, event_log)
+
+            # package the windows for returning them
             window_a = Window(window_a_log, 
                               window_a_start,
                               window_a_end)
