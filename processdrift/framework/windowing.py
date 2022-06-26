@@ -125,7 +125,7 @@ class FixedSizeWindowGenerator(WindowGenerator):
 
                 window_a_log = pm4py.filter_log(lambda t: t.attributes['concept:name'] in traces_window_a, event_log)
                 window_b_log = pm4py.filter_log(lambda t: t.attributes['concept:name'] in traces_window_b, event_log)
-
+                
             # package the windows for returning them
             window_a = Window(window_a_log, 
                               window_a_start,
