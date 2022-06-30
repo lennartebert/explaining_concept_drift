@@ -50,7 +50,7 @@ class DriftExplainer():
         return primary_changes, secondary_changes_dictionary
 
 
-def attribute_importance_per_primary_change_point(primary_and_secondary_changes, max_distance=None):
+def get_possible_change_explanations(primary_and_secondary_changes, max_distance=None):
         """Get the change points in the primary drift detector and all secondary change points that presume.
         
         Args:
@@ -103,13 +103,25 @@ def attribute_importance_per_primary_change_point(primary_and_secondary_changes,
         
         return change_point_explanations
 
-def plot_primary_and_secondary_changes(primary_and_secondary_change, columns=2):
+def plot_primary_and_secondary_changes(primary_and_secondary_change,
+    columns=2,
+    plot_primary_change_series=False,
+    plot_annotations=False,
+    threshold=0.05):
     """Plots the primary and secondary change series returned by DriftExplainer.get_primary_and_secondary_changes(event_log).
     
     Args:
         primary_and_secondary_change: The primary and secondary change series as returned by DriftExplainer.get_primary_and_secondary_changes(event_log).
+        columns: Number of columns
+        plot_primary_change_series: Whether or not to plot the primary change series.
+        plot_annotations: Whether or not to plot annotations for each change point.
+        threshold: Value or p-value threshold.
+    
+    Returns:
+        Plot.
     """
     # get the primary and secondary change
+    primary_change_points = primary_and_secondary_change[0]['change_points']
     primary_change_series = primary_and_secondary_change[0]['change_series']
     secondary_change_dict = primary_and_secondary_change[1]
     
@@ -129,25 +141,47 @@ def plot_primary_and_secondary_changes(primary_and_secondary_change, columns=2):
 
         ax = fig.add_subplot(gs[i])
         
-        ax.plot(primary_change_series, color='red', linestyle='dashed')
+        # plot the change points by a red line
+        for change_point in primary_change_points:
+            plt.axvline(x=change_point, color='red', linewidth=1)
+
+        # plot the threshold as a grey line
+        if threshold is not None:
+            plt.axhline(y=threshold, color='grey', linewidth=1)
+
+        # based on user choice, plot the primary change series
+        if plot_primary_change_series:
+            ax.plot(primary_change_series, color='red', linestyle='dashed')
+
         ax.plot(secondary_change_series)
         
-        # todo: add primary and secondary change points with scatter plot
         x = secondary_change_points
         y = list(secondary_change_series.loc[secondary_change_points])
         ax.scatter(x=x, 
             y=y,
             marker='x',
-            )
+            color='black'
+        )
         
-        for i, secondary_change_point in enumerate(x):
-            change_point_trace = x[i]
-            change_point_y = y[i]
-            ax.annotate(f'({change_point_trace}, {change_point_y:.2f})', (x[i], y[i]))
+        if plot_annotations:
+            for i, secondary_change_point in enumerate(x):
+                change_point_trace = x[i]
+                change_point_y = y[i]
+                ax.annotate(f'({change_point_trace}, {change_point_y:.2f})', (x[i], y[i]))
 
-        # set the y axis to 0 - 1
-        plt.ylim(0, 1)
+        # set the y axis so all changes in the data can be clearly seen
+        plt.ylim(-0.1, 1.1)
         ax.title.set_text(attribute_name)
+
+        # give a y label to all plots in first column
+        if i % columns == 0:
+            ax.set_ylabel('p-value')
+
+        # give x labels to last row
+        # e.g. 2 columns and 3 rows
+        # 1, 2, 3, 4 -> FALSE; 5, 6 -> True
+        if math.ceil((i+1)/columns) == rows:
+            ax.set_xlabel('traces')
     
     # add a title
     fig.suptitle('Attribute Change over Time')
@@ -155,9 +189,41 @@ def plot_primary_and_secondary_changes(primary_and_secondary_change, columns=2):
     fig.tight_layout()
     
     # create the legend
-    legend_elements = [lines.Line2D([0], [0], color='red', linestyle='dashed', label='primary axis')]
-    fig.legend(handles=legend_elements, loc='lower center', bbox_to_anchor=(0.5, -0.05))
+    legend_elements = [lines.Line2D([0], [0], color='red', linestyle='solid', label='Primary Change Points'),
+        lines.Line2D([0], [0], color='grey', linestyle='solid', label=f'Threshold ({threshold})'),
+        lines.Line2D([0], [0], color='black', marker='x', linestyle='None', label=f'Detected Secondary Change Points')
+    ]
+
+    fig.legend(handles=legend_elements, loc='lower center', bbox_to_anchor=(0.5, -0.15))
     
     plt.show()
 
     return plt
+
+def multiplot_primary_and_secondary_changes(primary_and_secondary_change, secondary_drict_detectors_per_plot, *args, **kwargs):
+    """Create multiple plots for primary and secondary changes.
+
+    This function is useful because many features can lead to plots that are too big for printing on one page.
+    
+    See plot_primary_and_secondary_changes() for documentation of *args and **kwargs.
+
+    Args:
+        primary_and_secondary_change: primary and secondary change results.
+        secondary_drict_detectors_per_plot: How many secondary change results to put per plot.
+    """
+    primary_changes = primary_and_secondary_change[0]
+    secondary_changes = primary_and_secondary_change[1]
+
+    def slice_per(source, step):
+        list_of_lists = [source[x:x+step] for x in range(0, len(source), step)]
+        return list_of_lists
+    
+    secondary_change_packages = slice_per(list(secondary_changes.keys()), secondary_drict_detectors_per_plot)
+    
+    plots = []
+    for secondary_change_package in secondary_change_packages:
+        temp_primary_and_secondary_change = (primary_changes, {key: secondary_changes[key] for key in secondary_change_package})
+        plot = plot_primary_and_secondary_changes(temp_primary_and_secondary_change, *args, **kwargs)
+        plots.append(plot)
+    
+    return plots

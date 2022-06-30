@@ -82,7 +82,8 @@ class DriftDetector:
         change_dictionary = {}
 
         # make sure that around_traces is sorted
-        around_traces.sort()
+        if around_traces != None:
+            around_traces.sort()
         
         # get windows for comparison
         for window_a, window_b in self.window_generator.get_windows(event_log):
@@ -95,10 +96,10 @@ class DriftDetector:
                         break
                     elif abs(trace_location - window_location) <= max_distance:
                         is_around_trace = True
-            
-            if not is_around_trace:
-                change_dictionary[window_b.start] = None
-                continue
+                    
+                    if not is_around_trace:
+                        change_dictionary[window_b.start] = None
+                        continue
 
             # get features for each window
             features_window_a = self.feature_extractor.extract(window_a.log)
@@ -120,24 +121,7 @@ class DriftDetector:
             change_dictionary[window_b.start] = result
         
         change_series = pd.Series(change_dictionary)
-        return change_series
-
-
-    # def _get_change_points(self, event_log):
-    #     """Get the change points for a given event log using the defined threshold.
-        
-    #     Args:
-    #         event_log: A pm4py event log.
-        
-    #     Returns:
-    #         List of change points.
-    #     """
-    #     change_series = self.get_change_series(event_log)
-        
-    #     change_points = self.get_change_points_from_series(change_series)
-        
-    #     return change_points
-    
+        return change_series    
 
     def _get_change_points(self, series):
         """Gets a list of changepoints from a series of observations based on a threshold. 
@@ -151,31 +135,47 @@ class DriftDetector:
         Returns:
             List of change points.
         """
+            # for each row, get whether its value is of threshold or lower
         series_below_threshold = series <= self.threshold
-        below_threshold_counts = series_below_threshold * (series_below_threshold.groupby((series_below_threshold != series_below_threshold.shift()).cumsum()).cumcount() + 1)
 
+        # do an accumulative count of how many values below the threshold have been observed
+        # restarts at 0 as soon as one value > threshold is observed
+        below_threshold_counts = series_below_threshold * (series_below_threshold.groupby((series_below_threshold != series_below_threshold.shift()).cumsum()).cumcount() + 1)
+        
+        # reset the index of below_threshold_counts to 0...n instead of trace counts
+        true_indices_series = below_threshold_counts.index
+        below_threshold_counts = below_threshold_counts.reset_index(drop=True)
+
+        # store change points as indices
         change_points = []
+        
+        # ix when the last streak ended
         last_change_streak_ended = None
-        for index, streak_count in below_threshold_counts.iteritems():  
+
+        for index, streak_count in below_threshold_counts.iteritems():
+            if streak_count < self.min_observations_below:
+                continue
+            
             # check if the streak is exactly the minimum number of observations
             if streak_count == self.min_observations_below:
                 
-                change_point_candidate = index - self.min_observations_below + 1
-
+                integer_index_candidate = index - self.min_observations_below + 1
+                change_point_candidate = true_indices_series[integer_index_candidate]
+                
                 # definitely enter the change point if this is the first streak that was seen
                 if last_change_streak_ended is None:
                     change_points.append(change_point_candidate)
                 else:
                     # get distance to last streak end
-                    distance_to_last_streak = change_point_candidate - last_change_streak_ended - 1
+                    distance_to_last_streak = integer_index_candidate - last_change_streak_ended - 1
 
                     if distance_to_last_streak >= self.min_distance_change_streaks:
                         change_points.append(change_point_candidate)
 
-            # populate the last change streak if the count is not 0
+            # update the end of the last change streak, if the current streak count exceeds the min observations below threshold
             if streak_count >= self.min_observations_below:
                 last_change_streak_ended = index
-
+        
         return change_points
 
 

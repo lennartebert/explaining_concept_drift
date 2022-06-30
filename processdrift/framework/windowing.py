@@ -6,7 +6,7 @@ import datetime
 import numpy as np
 import pm4py
 
-from pm4py.objects.log.obj import EventStream
+from pm4py.objects.log.obj import EventLog
 from pm4py.algo.filtering.log.timestamp import timestamp_filter
 
 class Window():
@@ -88,14 +88,6 @@ class FixedSizeWindowGenerator(WindowGenerator):
             if self.window_type == 'trace': end = len(event_log) - 1 # index of last trace is the end
             elif self.window_type == 'time': end = event_log[-1][-1]['time:timestamp'].replace(tzinfo=None)
         
-        # construct mapping of trace indexes to trace ids for event log filtering
-        # only do so if window_type is trace to avoid unnecessary calculations
-        # get all case ids in sorted list
-        trace_ids_list = []
-        if  self.window_type == 'trace':
-            for trace in event_log:
-                trace_ids_list.append(trace.attributes['concept:name'])
-
         window_a_start = start
         window_a_end = window_a_start + self.window_size - 1 # TODO check if this -1 is wrong
         window_b_start = window_a_start + self.window_offset
@@ -118,14 +110,14 @@ class FixedSizeWindowGenerator(WindowGenerator):
                     window_a_log = timestamp_filter.filter_traces_intersecting(event_log, window_a_start, window_a_end)
                     window_b_log = timestamp_filter.filter_traces_intersecting(event_log, window_b_start, window_b_end)
             elif self.window_type == 'trace':
-                # filter the event log only for the cases that fall in between window_x_start, window_x_end...
-                # construct a truth series that is true for indexes window_x_start to window_x_end
-                traces_window_a = trace_ids_list[window_a_start:window_a_end+1]
-                traces_window_b = trace_ids_list[window_b_start:window_b_end+1]
+                trace_window_a = event_log[window_a_start:window_a_end+1]
+                trace_window_b = event_log[window_b_start:window_b_end+1]
 
-                window_a_log = pm4py.filter_log(lambda t: t.attributes['concept:name'] in traces_window_a, event_log)
-                window_b_log = pm4py.filter_log(lambda t: t.attributes['concept:name'] in traces_window_b, event_log)
-                
+                window_a_log = EventLog(trace_window_a, attributes=event_log.attributes, extensions=event_log.extensions, classifiers=event_log.classifiers,
+                        omni_present=event_log.omni_present, properties=event_log.properties)
+                window_b_log = EventLog(trace_window_b, attributes=event_log.attributes, extensions=event_log.extensions, classifiers=event_log.classifiers,
+                        omni_present=event_log.omni_present, properties=event_log.properties)
+
             # package the windows for returning them
             window_a = Window(window_a_log, 
                               window_a_start,
@@ -152,7 +144,13 @@ class AdaptiveWindowGenerator(FixedSizeWindowGenerator):
     The approach is adapted from Maaradji et al. 2017.
     """
     
-    def __init__(self,  initial_window_size, window_offset=None, slide_by=1, window_type='trace', inclusion_criteria='events'):
+    def __init__(self,
+        initial_window_size, 
+        window_offset=None, 
+        slide_by=1, 
+        window_type='trace', 
+        inclusion_criteria='events',
+        min_window_size=2):
         """Initialize the variable sized window generator with the desired settings.
         
         Args:
@@ -161,11 +159,13 @@ class AdaptiveWindowGenerator(FixedSizeWindowGenerator):
             slide_by: How much to slide between generated windows. Defaults to 1.
             window_type: 'trace' or 'time'. Whether the window is created based on time or count of traces.
             inclusion_criteria: 'events', 'traces_intersecting', 'trace_contained'. Either return all events that take place in a window, all complete traces that have any event in the window or all complete traces that are fully contained in the window. Ignored if type is 'traces'.
+            min_window_size: Minimum size of the adaptively set windows. Window sizes of smaller than 2 will not increase again.
         """
         super().__init__(initial_window_size, window_offset, slide_by, window_type, inclusion_criteria)
 
         self.initial_window_size = initial_window_size
         self.previous_variability = None
+        self.min_window_size = min_window_size
 
     def _get_variability(self, features_window_a, features_window_b):
         """Get the variability as the number of observed unique values in the windows.
@@ -178,7 +178,14 @@ class AdaptiveWindowGenerator(FixedSizeWindowGenerator):
         unique_values_in_windows = np.unique(features)
         number_unique_values_in_windows = len(unique_values_in_windows)
 
-        return number_unique_values_in_windows
+        # TODO delete breakpoint
+        if number_unique_values_in_windows == 0:
+            pass
+
+        # set the variability to at least 1, even if it was 0 to avoid window sizes of 0
+        variability = max(1, number_unique_values_in_windows)
+
+        return variability
 
     def update_window_size(self, features_window_a, features_window_b):
         """Update the window size by evaluating how the variability changed between windows.
@@ -197,7 +204,10 @@ class AdaptiveWindowGenerator(FixedSizeWindowGenerator):
         # the evolution ratio is the change in variability between two windows
         evolution_ratio = new_variability / self.previous_variability
 
-        next_window_size = int(self.window_size * evolution_ratio)
+        next_window_size = round(self.window_size * evolution_ratio)
+
+        # set the next window size to min_window size at minimum
+        next_window_size = max(self.min_window_size, next_window_size)
 
         # set the object variables
         self.previous_variability = new_variability
