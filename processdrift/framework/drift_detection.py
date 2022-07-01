@@ -135,7 +135,7 @@ class DriftDetector:
         Returns:
             List of change points.
         """
-            # for each row, get whether its value is of threshold or lower
+        # for each row, get whether its value is of threshold or lower
         series_below_threshold = series <= self.threshold
 
         # do an accumulative count of how many values below the threshold have been observed
