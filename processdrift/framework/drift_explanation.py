@@ -156,12 +156,14 @@ def plot_primary_and_secondary_changes(primary_and_secondary_change,
         ax.plot(secondary_change_series)
         
         x = secondary_change_points
-        y = list(secondary_change_series.loc[secondary_change_points])
-        ax.scatter(x=x, 
-            y=y,
-            marker='x',
-            color='black'
-        )
+        # check if there were secondary change points
+        if x is not None:
+            y = list(secondary_change_series.loc[secondary_change_points])
+            ax.scatter(x=x, 
+                y=y,
+                marker='x',
+                color='black'
+            )
         
         if plot_annotations:
             for i, secondary_change_point in enumerate(x):
@@ -171,6 +173,7 @@ def plot_primary_and_secondary_changes(primary_and_secondary_change,
 
         # set the y axis so all changes in the data can be clearly seen
         plt.ylim(-0.1, 1.1)
+        plt.xlim(0, primary_change_series.index[-1])
         ax.title.set_text(attribute_name)
 
         # give a y label to all plots in first column

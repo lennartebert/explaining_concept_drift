@@ -5,6 +5,8 @@ import pandas as pd
 import numpy as np
 import subprocess
 
+from abc import ABC, abstractmethod
+
 from processdrift.framework import feature_extraction
 from processdrift.framework import windowing
 import pm4py
@@ -13,24 +15,20 @@ class DriftDetector:
     """The drift detector gets a feature's change over time and can retrieve the according change points.
     """
     
-    def __init__(self, feature_extractor, window_generator, population_comparer, threshold=0.05, min_observations_below=3, min_distance_change_streaks=3, detector_name=None):
+    def __init__(self, feature_extractor, window_generator, population_comparer, change_point_extractor, detector_name=None):
         """Create a new drift detector and supply strategies for feature extraction, window generation and population comparison.
         
         Args:
             feature_extractor: A feature extractor from processdrift.framework.feature_extraction.
             window_generator: A window generator from processdrift.framework.windowing.
             population_comparer: A population comparer from processdrift.framework.popcomparison.
-            threshold: The threshold in comparison value which identifies a change point.
-            min_observations_below: Minimum number of observations below the threshold for a change point to be registered.
-            min_distance_change_streaks: Minimum distance between two change points.
+            change_point_extractor: The change point extractor used to extract change points from the change series.
             detector_name: The name of the detector.
         """
         self.feature_extractor = feature_extractor
         self.window_generator = window_generator
         self.population_comparer = population_comparer
-        self.threshold = threshold
-        self.min_observations_below = min_observations_below
-        self.min_distance_change_streaks = min_distance_change_streaks
+        self.change_point_extractor = change_point_extractor
         self._name = detector_name
     
     @property
@@ -92,7 +90,7 @@ class DriftDetector:
                 start_change_point_window = max(0, change_point-max_distance)
                 end_change_point_window = min(len(event_log), change_point+max_distance)
 
-                # reset the size of the adaptive window generator if there was a gap between the last window areoun the change point and this one
+                # reset the size of the adaptive window generator if there was a gap between the last window around the change point and this one
                 if last_end_change_point_window is not None:
                     # did the windows overlap -> set start_change_point_window to end of last change point window
                     if last_end_change_point_window > start_change_point_window:
@@ -105,11 +103,11 @@ class DriftDetector:
                 # update the last end of the change point window
                 last_end_change_point_window = end_change_point_window
                 
-                window_generator_start = max(0, start_change_point_window-self.window_generator.window_size)
+                window_generator_start = max(0, start_change_point_window-2*self.window_generator.window_size)
 
                 # get windows for comparison
                 for window_a, window_b in self.window_generator.get_windows(event_log, start=window_generator_start):
-                    if window_b.start > end_change_point_window: break 
+                    if window_b.end > end_change_point_window: break 
 
                     # get features for each window
                     features_window_a = self.feature_extractor.extract(window_a.log)
@@ -158,48 +156,91 @@ class DriftDetector:
         Returns:
             List of change points.
         """
-        # for each row, get whether its value is of threshold or lower
-        series_below_threshold = series <= self.threshold
-
-        # do an accumulative count of how many values below the threshold have been observed
-        # restarts at 0 as soon as one value > threshold is observed
-        below_threshold_counts = series_below_threshold * (series_below_threshold.groupby((series_below_threshold != series_below_threshold.shift()).cumsum()).cumcount() + 1)
-        
-        # reset the index of below_threshold_counts to 0...n instead of trace counts
-        true_indices_series = below_threshold_counts.index
-        below_threshold_counts = below_threshold_counts.reset_index(drop=True)
-
-        # store change points as indices
-        change_points = []
-        
-        # ix when the last streak ended
-        last_change_streak_ended = None
-
-        for index, streak_count in below_threshold_counts.iteritems():
-            if streak_count < self.min_observations_below:
-                continue
-            
-            # check if the streak is exactly the minimum number of observations
-            if streak_count == self.min_observations_below:# or (streak_count > self.min_observations_below and streak_count % (2 * self.window_generator.window_size) == 0):
-                
-                integer_index_candidate = int(index - self.min_observations_below + 1)
-                change_point_candidate = true_indices_series[integer_index_candidate]
-                
-                # definitely enter the change point if this is the first streak that was seen
-                if last_change_streak_ended is None:
-                    change_points.append(change_point_candidate)
-                else:
-                    # get distance to last streak end
-                    distance_to_last_streak = integer_index_candidate - last_change_streak_ended - 1
-
-                    if distance_to_last_streak >= self.min_distance_change_streaks:
-                        change_points.append(change_point_candidate)
-                            
-            # update the end of the last change streak, if the current streak count exceeds the min observations below threshold
-            if streak_count >= self.min_observations_below:
-                last_change_streak_ended = index
+        change_points = self.change_point_extractor.get_change_points(series)
         
         return change_points
+
+class ChangePointExtractor(ABC):
+    """Implements a strategy for extracting change points from a change series."""
+    @abstractmethod
+    def get_change_points(self, change_series):
+        """Get the change points from a change series.
+        
+        Args:
+            change_series: Pandas series of similarity measure (e.g., p-values).
+            
+        Returns:
+            List of change points
+        """
+        pass
+
+class PhiFilterChangePointExtractor(ChangePointExtractor):
+    """Applies a phi-filter to extract change points.
+    
+    The general idea is that there need to be a minimum of "phi" 
+    observations below a threshold to count a change.
+    """
+    def __init__(self, threshold, phi, rho=None):
+        """Initialize the phi filer.
+        
+        Args:
+            threshold: Lower threshold for the similarity measure. E.g., 0.05 for p-values.
+            phi: Minimum observations below the threshold.
+            rho: In a streak of observations below the threshold, 
+                number of observations that can be below the threshold.
+        """
+        self.threshold = threshold
+        self.phi = phi
+        self.rho = rho
+
+    def get_change_points(self, change_series):
+        """Get the change points from a change series.
+        
+        Args:
+            change_series: Pandas series of similarity measure (e.g., p-values).
+            
+        Returns:
+            List of change points
+        """
+        # for each row, get whether its value is of threshold or lower
+        below_threshold_series = change_series <= self.threshold       
+
+         # the index of the change series does not need to be continuous and could be sth. like
+        # like the case count. Therefore, reset the index and save the original one.
+        original_index = change_series.index
+
+        # reset the index
+        below_threshold_series = below_threshold_series.reset_index(drop=True)
+ 
+        change_points = set()
+
+        phi_filter_count = 0
+        rho_filter_count = 0
+        streak_beginning = None
+        streak = 0
+        for i, is_below_threshold in below_threshold_series.iteritems():
+            if is_below_threshold:
+                # save the index of the beginning of the streak
+                if streak_beginning == None:
+                    streak_beginning = i
+                
+                streak += 1
+                phi_filter_count += 1
+                rho_filter_count = 0
+            else:
+                rho_filter_count += 1
+                phi_filter_count = 0
+                if rho_filter_count > self.rho:
+                    streak_beginning = None
+                    streak = 0
+            
+            if streak == self.phi:
+                # get the original index and append it to the change points
+                original_index_start_streak = original_index[streak_beginning]
+                
+                change_points.add(original_index_start_streak)
+
+        return list(change_points)
 
 
 class DriftDetectorProDrift(DriftDetector):
@@ -259,26 +300,6 @@ class DriftDetectorProDrift(DriftDetector):
         change_series = pd.Series(change_series_array)
 
         return change_series
-
-    # def get_change_points_from_series(self, series):
-    #     """Gets a list of changepoints from a series of observations based on a threshold. 
-        
-    #     The ProDrift implementation will just return all the points in the change_series where the value == 0.
-
-    #     Args:
-    #         series: Pandas series with observations.
-            
-    #     Returns:
-    #         List of change points.
-    #     """
-
-    #     indeces_change_points = series[series == 0].index
-
-    #     # convert to list
-
-    #     change_points = list(indeces_change_points)
-
-    #     return change_points
 
     def _get_change_points(self, event_log):
         # save event log to temporary file
@@ -380,15 +401,15 @@ class DriftDetectorTrueKnown(DriftDetector):
         """
         return self.change_points
 
-def get_all_attribute_drift_detectors(log, window_generator, population_comparer, level='trace', threshold=0.05, exclude_attributes=[], min_observations_below=3, min_distance_change_streaks=3):
+def get_all_attribute_drift_detectors(log, window_generator, population_comparer, change_point_extractor, level='trace', exclude_attributes=[]):
     """Factory function to get attribute drift detectors for all trace level attributes in an event log.
         
     Args:
         log: A pm4py event log.
         window_generator: A windowing.WindowGenerator() to know which windowing strategy to use.
         pupulation_comparer: A pop_comparison.PopComparer() to know how to compare the populations.
+        change_point_extractor: A change_detection.ChangePointExtractor() to get change points from the change series.
         level: 'trace', 'event' or 'trace_and_event'.
-        threshold: The threshold for change detection.
         exclude_attributes: Event log attributes for which no drift detector should be generated.
     
     Returns:
@@ -416,7 +437,7 @@ def get_all_attribute_drift_detectors(log, window_generator, population_comparer
             new_feature_extractor = feature_extraction.AttributeFeatureExtractor(attribute_level='trace', attribute_name=attribute_name)
             
             # create the drift detector
-            drift_detector = DriftDetector(new_feature_extractor, window_generator, population_comparer, threshold=threshold, min_observations_below=min_observations_below, min_distance_change_streaks=min_observations_below)
+            drift_detector = DriftDetector(new_feature_extractor, window_generator, population_comparer, change_point_extractor=change_point_extractor)
             drift_detectors.append(drift_detector)
     if level == 'event' or level == 'trace_and_event':
         for attribute_name in event_attributes:
@@ -424,7 +445,7 @@ def get_all_attribute_drift_detectors(log, window_generator, population_comparer
             new_feature_extractor = feature_extraction.AttributeFeatureExtractor(attribute_level='event', attribute_name=attribute_name)
             
             # create the drift detector
-            drift_detector = DriftDetector(new_feature_extractor, window_generator, population_comparer, threshold=threshold, min_observations_below=min_observations_below, min_distance_change_streaks=min_observations_below)
+            drift_detector = DriftDetector(new_feature_extractor, window_generator, population_comparer, change_point_extractor=change_point_extractor)
             drift_detectors.append(drift_detector)
     
     return drift_detectors
