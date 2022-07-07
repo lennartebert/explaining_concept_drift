@@ -41,14 +41,14 @@ class DriftDetector:
         else:
             return self._name
 
-    def get_changes(self, event_log, around_traces=None, max_distance=None):
+    def get_changes(self, event_log, around_change_points=None, max_distance=None):
         """Get changes in the selected feature from an event log.
 
         The search for changes can be restricted to the area of max_distance around traces specified in a list.
 
         Args:
             event_log: A pm4py event log.
-            around_traces: List of trace numbers. Only look at changes around traces.
+            around_change_points: List of trace numbers. Only look at changes around traces.
             max_distance: Maximum distance around each trace to look for a change.
 
         Returns:
@@ -56,7 +56,7 @@ class DriftDetector:
         """
 
         # get the change series
-        change_series = self._get_change_series(event_log, around_traces=around_traces, max_distance=max_distance)
+        change_series = self._get_change_series(event_log, around_change_points=around_change_points, max_distance=max_distance)
 
         # get the change points
         change_points = self._get_change_points(change_series)
@@ -68,12 +68,12 @@ class DriftDetector:
 
         return result
 
-    def _get_change_series(self, event_log, around_traces, max_distance):
+    def _get_change_series(self, event_log, around_change_points, max_distance):
         """Get the change over time from the event log.
         
         Args:
             event_log: A pm4py event log.
-            around_traces: List of trace numbers. Only look at changes around traces.
+            around_change_points: List of trace numbers. Only look at changes around traces.
             max_distance: Maximum distance around each trace to look for a change.
             
         Returns:
@@ -81,46 +81,69 @@ class DriftDetector:
         """
         change_dictionary = {}
 
-        # make sure that around_traces is sorted
-        if around_traces != None:
-            around_traces.sort()
-        
-        # get windows for comparison
-        for window_a, window_b in self.window_generator.get_windows(event_log):
-            # check if around_traces is set, if yes, then continue to next window if this one is not in scope
-            is_around_trace = False
-            if around_traces is not None:
-                window_location = window_b.start
-                for trace_location in around_traces:
-                    if trace_location > window_location + self.window_generator.window_size:
-                        break
-                    elif abs(trace_location - window_location) <= max_distance:
-                        is_around_trace = True
+        # if the user specified change points, only search around these
+        if around_change_points is not None:
+            # make sure that around_change_points is sorted
+            around_change_points.sort()
+
+            last_end_change_point_window = None
+            for change_point in around_change_points:
+                # determine the area in which to look for changes
+                start_change_point_window = max(0, change_point-max_distance)
+                end_change_point_window = min(len(event_log), change_point+max_distance)
+
+                # reset the size of the adaptive window generator if there was a gap between the last window areoun the change point and this one
+                if last_end_change_point_window is not None:
+                    # did the windows overlap -> set start_change_point_window to end of last change point window
+                    if last_end_change_point_window > start_change_point_window:
+                        start_change_point_window = last_end_change_point_window
+                    # else, keep it as is and reset the adaptive window generator window size, if that window generator is used
+                    else:
+                        # update window size for adaptive generator
+                        if isinstance(self.window_generator, windowing.AdaptiveWindowGenerator):
+                            self.window_generator.reset_window_size()
+                # update the last end of the change point window
+                last_end_change_point_window = end_change_point_window
+                
+                window_generator_start = max(0, start_change_point_window-self.window_generator.window_size)
+
+                # get windows for comparison
+                for window_a, window_b in self.window_generator.get_windows(event_log, start=window_generator_start):
+                    if window_b.start > end_change_point_window: break 
+
+                    # get features for each window
+                    features_window_a = self.feature_extractor.extract(window_a.log)
+                    features_window_b = self.feature_extractor.extract(window_b.log)
+
+                    # update window size for adaptive generator
+                    if isinstance(self.window_generator, windowing.AdaptiveWindowGenerator):
+                        self.window_generator.update_window_size(features_window_a, features_window_b)
                     
-                    if not is_around_trace:
-                        change_dictionary[window_b.start] = None
-                        continue
+                    # compare both windows
+                    # result is true if a significant change is found
+                    result = self.population_comparer.compare(features_window_a, features_window_b)
+                    
+                    change_dictionary[window_b.end] = result
+        # look for change globally, not just around change points
+        else:
+            # get windows for comparison
+            for window_a, window_b in self.window_generator.get_windows(event_log):
+                # get features for each window
+                features_window_a = self.feature_extractor.extract(window_a.log)
+                features_window_b = self.feature_extractor.extract(window_b.log)
 
-            # get features for each window
-            features_window_a = self.feature_extractor.extract(window_a.log)
-            features_window_b = self.feature_extractor.extract(window_b.log)
+                # update window size for adaptive generator
+                if isinstance(self.window_generator, windowing.AdaptiveWindowGenerator):
+                    self.window_generator.update_window_size(features_window_a, features_window_b)
+                
+                # compare both windows
+                # result is true if a significant change is found
+                result = self.population_comparer.compare(features_window_a, features_window_b)
+                
+                change_dictionary[window_b.end] = result
 
-            # if len(features_window_a) != len(features_window_b):
-            #     print('lenghts of windows does not match.')
-            
-            # update window size
-            if isinstance(self.window_generator, windowing.AdaptiveWindowGenerator):
-                self.window_generator.update_window_size(features_window_a, features_window_b)
-            
-            # print(pd.concat([features_window_a, features_window_b], axis=1))# , right_index=True, left_index=True))
-            
-            # compare both windows
-            # result is true if a significant change is found
-            result = self.population_comparer.compare(features_window_a, features_window_b)
-            
-            change_dictionary[window_b.start] = result
-        
         change_series = pd.Series(change_dictionary)
+        
         return change_series    
 
     def _get_change_points(self, series):
@@ -157,9 +180,9 @@ class DriftDetector:
                 continue
             
             # check if the streak is exactly the minimum number of observations
-            if streak_count == self.min_observations_below:
+            if streak_count == self.min_observations_below:# or (streak_count > self.min_observations_below and streak_count % (2 * self.window_generator.window_size) == 0):
                 
-                integer_index_candidate = index - self.min_observations_below + 1
+                integer_index_candidate = int(index - self.min_observations_below + 1)
                 change_point_candidate = true_indices_series[integer_index_candidate]
                 
                 # definitely enter the change point if this is the first streak that was seen
@@ -171,7 +194,7 @@ class DriftDetector:
 
                     if distance_to_last_streak >= self.min_distance_change_streaks:
                         change_points.append(change_point_candidate)
-
+                            
             # update the end of the last change streak, if the current streak count exceeds the min observations below threshold
             if streak_count >= self.min_observations_below:
                 last_change_streak_ended = index

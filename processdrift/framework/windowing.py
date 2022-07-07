@@ -31,7 +31,7 @@ class WindowGenerator(ABC):
     """
     
     @abstractmethod
-    def get_windows(self, event_log):
+    def get_windows(self, event_log, around_trace=None, max_distance=None):
         """Get windows from an event log. The window tuples are yielded for direct processing.
         
         Args:
@@ -178,10 +178,6 @@ class AdaptiveWindowGenerator(FixedSizeWindowGenerator):
         unique_values_in_windows = np.unique(features)
         number_unique_values_in_windows = len(unique_values_in_windows)
 
-        # TODO delete breakpoint
-        if number_unique_values_in_windows == 0:
-            pass
-
         # set the variability to at least 1, even if it was 0 to avoid window sizes of 0
         variability = max(1, number_unique_values_in_windows)
 
@@ -212,3 +208,7 @@ class AdaptiveWindowGenerator(FixedSizeWindowGenerator):
         # set the object variables
         self.previous_variability = new_variability
         self.window_size = next_window_size
+
+    def reset_window_size(self):
+        """Reset the window size to the initial setting."""
+        self.window_size = self.initial_window_size

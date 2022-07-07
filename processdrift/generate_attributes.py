@@ -63,11 +63,11 @@ class AttributeGenerator:
         attribute_value_candidates = [f'value_{attribute_number + 1}' for attribute_number, p in enumerate(distribution)]
         
         # get the data according to the probability distribution
-        attribute_values = [] # one entry for each trace or event
-        for trace in range(len(self.opyenxes_log)):
-            attribute_value = np.random.choice(attribute_value_candidates, p=distribution)
-            attribute_values.append(attribute_value)
+        attribute_values = np.random.choice(attribute_value_candidates, len(self.opyenxes_log), p=distribution) # one entry for each trace or event
         
+        # convert to list
+        attribute_values = list(attribute_values)
+
         return attribute_values
     
     def _write_attribute_into_log(self, attribute_name, attribute_data, attribute_level='trace'):
@@ -151,19 +151,26 @@ class AttributeGenerator:
         self.change_point_explanations.append(change_point_info)
     
 
-def _get_distribution(attribute_value_count):
+def _get_distribution(attribute_value_count, min_probability=0.05):
     """Get a single distribution for a given number of values.
     
     Args:
         number_values: How many different values the distribution should have.
+        min_probability: Minimum probability per attribute value.
     
     Returns:
         A probability distribution.
     """
-    # use the Dirichlet distribution
-    distribution = np.random.dirichlet(np.ones(attribute_value_count)).tolist()
-    return distribution
+    # generate a random number per attribute_value_count
+    # each attribute probability should be at least min_percent -> return an error if this cannot be satisfied
+    if attribute_value_count * min_probability > 1:
+        raise Exception("'min_probability' too high for the number of attribute values.")
 
+    sampled_random_numbers = np.random.random(attribute_value_count)
+    distribution_random = sampled_random_numbers / sum(sampled_random_numbers)
+    distribution = [min_probability + (1-(min_probability*attribute_value_count)) * random for random in distribution_random]
+
+    return distribution
 
 def _get_drifted_distributions(attribute_value_count, change_type=None):
     """Get two distributions, the baseline distribution and the drifted distribution.
@@ -198,7 +205,7 @@ def _get_drifted_distributions(attribute_value_count, change_type=None):
     
     while not drifted_distribution_found:
         if change_type == 'new_value':
-            new_value_probability = np.random.random()
+            new_value_probability = 0.05 + 0.95 * np.random.random()
 
             drifted_distribution = baseline_distribution.copy()
             drifted_distribution = list(np.array(drifted_distribution) * (1 - new_value_probability))

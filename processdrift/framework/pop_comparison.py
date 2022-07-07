@@ -213,7 +213,7 @@ class ChiSquaredComparer(PopComparer):
         
         # replace Na with 0
         merged_df = merged_df.fillna(0)
-
+        
         return merged_df['expected'].values, merged_df['observed'].values
     
     def _get_comparison_measure(self, population_1, population_2):
@@ -235,6 +235,59 @@ class ChiSquaredComparer(PopComparer):
         # check that there are always more than 5 expected values
         if count_expected_values_smaller_equal_5 == 0:
             test_statistics, p_value = scipy.stats.chisquare(population_2, population_1)
+        
+        return p_value
+
+class GTestComparer(PopComparer):
+    """Get the G-test result for the two populations.
+    """
+    def _preprocess(self, population_1, population_2):
+        """Get frequency counts for both populations.
+
+        Args:
+            population_1: The first population.
+            population_2: The second population.
+        
+        Returns:
+            (population_1, population_2): The two preprocessed populations.
+        """
+        # create series from observation list
+        pop_1_series = pd.Series(population_1, name='expected')
+        pop_2_series = pd.Series(population_2, name='observed')
+
+        # count number of values
+        pop_1_value_counts = pop_1_series.value_counts()
+        pop_2_value_counts = pop_2_series.value_counts()
+
+        # create pandas dataframe
+        merged_df = pd.merge(pop_1_value_counts, pop_2_value_counts, how='outer', left_index=True, right_index=True)
+        
+        # replace Na with 0
+        merged_df = merged_df.fillna(0)
+        
+        return merged_df['expected'].values, merged_df['observed'].values
+    
+    def _get_comparison_measure(self, population_1, population_2):
+        """Calculates the G-test between the two populations.
+        
+        Args:
+            population_1: The first population. Also called the expected population.
+            population_2: The first population. Also called the observed population.
+            
+        Returns:
+            p-value for G-test for both populations.
+        """
+        # the populations have been transformed into frequency counts in preprocessing
+
+        p_value = None
+
+        count_expected_values_smaller_equal_5 = sum(population_1 <= 5)
+        
+        # check that there are always more than 5 expected values
+        if count_expected_values_smaller_equal_5 == 0:
+            obs = np.array([population_1, population_2])
+            # G test with scipy:
+            g, p_value, dof, expctd = scipy.stats.chi2_contingency(obs, lambda_="log-likelihood")
         
         return p_value
 
