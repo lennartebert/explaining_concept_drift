@@ -1,6 +1,6 @@
 """Module for the comparison of populations in the process mining concept drift explanation framework.
 """
-
+from collections import Counter
 from abc import ABC, abstractmethod
 import pandas as pd
 import numpy as np
@@ -179,21 +179,17 @@ def get_contingency_table(pop_1_array, pop_2_array):
         pd_series_1: First sample array.
         pd_series_2: Second sample array.
     """
-    # get pandas series for both arrays of observations so that we can calculate the value counts next
-    pop_1 = pd.Series(pop_1_array)
-    pop_2 = pd.Series(pop_2_array)
+    pop_1_counter = Counter(pop_1_array)
+    pop_2_counter = Counter(pop_2_array)
+    result_array = []
 
-    # get the observation frequencies
-    pop_1_frequencies = pop_1.value_counts()
-    pop_2_frequencies = pop_2.value_counts()
+    keys = list(pop_1_counter.keys() | pop_2_counter.keys())
+    result_array = []
 
-    # create the contingency table, fill in NaN with 0
-    contingency_table_df = pd.DataFrame([pop_1_frequencies, pop_2_frequencies])
-    contingency_table_df = contingency_table_df.fillna(0)
+    for dict in [pop_1_counter, pop_2_counter]:
+        result_array.append([dict.get(key, 0) for key in keys])
 
-    # convert to numpy array
-    contingency_table = contingency_table_df.to_numpy()
-    return contingency_table
+    return np.array(result_array)
 
 class ChiSquaredComparer(PopComparer):
     """Get the Chi Squared Distance between the two populations.
