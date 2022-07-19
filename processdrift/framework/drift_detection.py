@@ -11,7 +11,23 @@ from processdrift.framework import feature_extraction
 from processdrift.framework import windowing
 import pm4py
 
-class DriftDetector:
+class DriftDetector(ABC):
+    """The DriftDetector determines the change series and change points for a given event log."""
+    @abstractmethod
+    def get_changes(self, event_log, around_change_points=None, max_distance=None, unit_of_measure='trace'):
+        """Get drift points for an event log. All further detail is specified in the inheriting classes.
+
+        Args:
+            event_log: A pm4py event log.
+            around_change_points: Only get changes at a maximum of max_distance around an array of change_points.
+            max_distance: Maximum distance of change to any change point.
+            unit_of_measure: 'trace' or 'time'; Whether the change point and maximum distance are defined as timestamps or trace counts.
+
+        Returns:
+            A DriftDetectionResult object with a change series and the change points.
+        """
+
+class WindowTestDD(DriftDetector):
     """The drift detector gets a feature's change over time and can retrieve the according change points.
     """
     
@@ -39,18 +55,18 @@ class DriftDetector:
         else:
             return self._name
 
-    def get_changes(self, event_log, around_change_points=None, max_distance=None):
-        """Get changes in the selected feature from an event log.
+    def get_changes(self, event_log, around_change_points=None, max_distance=None, unit_of_measure='trace'):
+        """Get drift points for an event log by comparing windows.
 
         The search for changes can be restricted to the area of max_distance around traces specified in a list.
 
         Args:
             event_log: A pm4py event log.
-            around_change_points: List of trace numbers. Only look at changes around traces.
-            max_distance: Maximum distance around each trace to look for a change.
+            unit_of_measure: 'trace' or 'time'; Whether the change point and maximum distance are defined as timestamps or trace counts.
+
 
         Returns:
-            Dictionary with change points and change series: {change_points: [...], change_series: pandas.Series}
+            A DriftDetectionResult object with a change series and the change points.
         """
 
         # get the change series
@@ -59,25 +75,24 @@ class DriftDetector:
         # get the change points
         change_points = self.change_point_extractor.get_change_points(change_series)
 
-        # result = DriftDetectorResult(change_points=change_points, change_series=change_series)
-        result = {
-            'change_points': change_points,
-            'change_series': change_series
-        }
+        result = DriftDetectionResult(change_points=change_points, change_series=change_series)
 
         return result
 
-    def _get_change_series(self, event_log, around_change_points, max_distance):
+    def _get_change_series(self, event_log, around_change_points, max_distance, unit_of_measure='trace'):
         """Get the change over time from the event log.
         
         Args:
             event_log: A pm4py event log.
             around_change_points: List of trace numbers. Only look at changes around traces.
             max_distance: Maximum distance around each trace to look for a change.
+            unit_of_measure: 'trace' or 'time'; Whether the change point and maximum distance are defined as timestamps or trace counts.
             
         Returns:
             The comparison result over time.
         """
+        if unit_of_measure == 'time': raise NotImplementedError(f'Unit of measure {unit_of_measure} not implemented.') # TODO implement time as unit of measure
+
         change_dictionary = {}
 
         # if the user specified change points, only search around these
@@ -99,7 +114,7 @@ class DriftDetector:
                     # else, keep it as is and reset the adaptive window generator window size, if that window generator is used
                     else:
                         # update window size for adaptive generator
-                        if isinstance(self.window_generator, windowing.AdaptiveWindowGenerator):
+                        if isinstance(self.window_generator, windowing.AdaptiveWG):
                             self.window_generator.reset_window_size()
                 # update the last end of the change point window
                 last_end_change_point_window = end_change_point_window
@@ -115,7 +130,7 @@ class DriftDetector:
                     features_window_b = self.feature_extractor.extract(window_b.log)
 
                     # update window size for adaptive generator
-                    if isinstance(self.window_generator, windowing.AdaptiveWindowGenerator):
+                    if isinstance(self.window_generator, windowing.AdaptiveWG):
                         self.window_generator.update_window_size(features_window_a, features_window_b)
                     
                     # compare both windows
@@ -132,7 +147,7 @@ class DriftDetector:
                 features_window_b = self.feature_extractor.extract(window_b.log)
 
                 # update window size for adaptive generator
-                if isinstance(self.window_generator, windowing.AdaptiveWindowGenerator):
+                if isinstance(self.window_generator, windowing.AdaptiveWG):
                     self.window_generator.update_window_size(features_window_a, features_window_b)
                 
                 # compare both windows
@@ -143,29 +158,24 @@ class DriftDetector:
 
         change_series = pd.Series(change_dictionary)
         
-        return change_series    
+        return change_series
 
-class DriftDetectorResult():
-    """Results object for the change point detector."""
-    def __init__(self, change_points=None, change_series=None):
-        self.change_points = change_points
-        self.change_series = change_series
 
-class DriftDetectorProDrift(DriftDetector):
+class ProDriftDD(DriftDetector):
     """Leverages ProDrift for drift detection purposes."""
     def __init__(self, 
-                    path_to_prodrift, 
-                    drift_detection_mechanism='runs',
-                    window_size=200,
-                    window_mode='adaptive',
-                    detect_gradual_as_well=False):
+            path_to_prodrift, 
+            drift_detection_mechanism='runs',
+            window_size=200,
+            window_mode='adaptive',
+            detect_gradual_as_well=False):
         self.path_to_prodrift = path_to_prodrift
         self.drift_detection_mechanism = drift_detection_mechanism
         self.window_size = window_size
         self.window_mode = window_mode
         self.detect_gradual_as_well = detect_gradual_as_well
 
-    def get_changes(self, event_log):
+    def get_changes(self, event_log, around_change_points=None, max_distance=None, unit_of_measure='trace'):
         """Get changes in the selected feature from an event log.
 
         The search for changes can be restricted to the area of max_distance around traces specified in a list.
@@ -183,10 +193,7 @@ class DriftDetectorProDrift(DriftDetector):
         # get the change series
         change_series = self._get_change_series(event_log, change_points)
         
-        result = {
-            'change_points': change_points,
-            'change_series': change_series
-        }
+        result = DriftDetectionResult(change_points=change_points, change_series=change_series)
 
         return result
 
@@ -251,9 +258,8 @@ class DriftDetectorProDrift(DriftDetector):
                     change_points.append(int(trace_number))
 
             return change_points
-    
 
-class DriftDetectorTrueKnown(DriftDetector):
+class TrueKnownDD(DriftDetector):
     """A drift detector to be used if the true change points are known.
 
     Will always return 100% accurate results
@@ -271,12 +277,11 @@ class DriftDetectorTrueKnown(DriftDetector):
         self.threshold = None
         self._name = 'Drift Detector True Known'
     
-    def get_changes(self, event_log):
-        result = {
-            'change_points': self.change_points,
-            'change_series': self._get_change_series(event_log)
-        }
-
+    def get_changes(self, event_log, around_change_points=None, max_distance=None, unit_of_measure='trace'):
+        # get the change series
+        change_series = self._get_change_series(event_log)
+        
+        result = DriftDetectionResult(change_points=self.change_points, change_series=change_series)
         return result
     
     def _get_change_series(self, event_log):
@@ -309,9 +314,17 @@ class DriftDetectorTrueKnown(DriftDetector):
         """
         return self.change_points
 
+
+class DriftDetectionResult():
+    """Results object for the change point detector."""
+    def __init__(self, change_points=None, change_series=None):
+        self.change_points = change_points
+        self.change_series = change_series
+
+
 def get_all_attribute_drift_detectors(log, window_generator, population_comparer, change_point_extractor, level='trace', exclude_attributes=[]):
     """Factory function to get attribute drift detectors for all trace level attributes in an event log.
-        
+    
     Args:
         log: A pm4py event log.
         window_generator: A windowing.WindowGenerator() to know which windowing strategy to use.
@@ -342,18 +355,18 @@ def get_all_attribute_drift_detectors(log, window_generator, population_comparer
     if level == 'trace' or level == 'trace_and_event':
         for attribute_name in trace_attributes:
             # get the unique feature extractor
-            new_feature_extractor = feature_extraction.AttributeFeatureExtractor(attribute_level='trace', attribute_name=attribute_name)
+            new_feature_extractor = feature_extraction.AttributeFE(attribute_level='trace', attribute_name=attribute_name)
             
             # create the drift detector
-            drift_detector = DriftDetector(new_feature_extractor, window_generator, population_comparer, change_point_extractor=change_point_extractor)
+            drift_detector = WindowTestDD(new_feature_extractor, window_generator, population_comparer, change_point_extractor=change_point_extractor)
             drift_detectors.append(drift_detector)
     if level == 'event' or level == 'trace_and_event':
         for attribute_name in event_attributes:
             # get the unique feature extractor
-            new_feature_extractor = feature_extraction.AttributeFeatureExtractor(attribute_level='event', attribute_name=attribute_name)
+            new_feature_extractor = feature_extraction.AttributeFE(attribute_level='event', attribute_name=attribute_name)
             
             # create the drift detector
-            drift_detector = DriftDetector(new_feature_extractor, window_generator, population_comparer, change_point_extractor=change_point_extractor)
+            drift_detector = WindowTestDD(new_feature_extractor, window_generator, population_comparer, change_point_extractor=change_point_extractor)
             drift_detectors.append(drift_detector)
     
     return drift_detectors

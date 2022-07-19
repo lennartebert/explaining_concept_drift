@@ -35,7 +35,7 @@ class FeatureExtractor(ABC):
         return self.name
 
 
-class AttributeFeatureExtractor(FeatureExtractor):
+class AttributeFE(FeatureExtractor):
     """The attribute feature extractor retrieves all attribute values from an event log.
     """
     def __init__(self, attribute_level, attribute_name):
@@ -80,7 +80,7 @@ class AttributeFeatureExtractor(FeatureExtractor):
         
         return result_array
 
-class RelationalEntropyFeatureExtractor(FeatureExtractor):
+class RelationalEntropyFE(FeatureExtractor):
     """Feature extractor that extracts relational entropy for each activity as a feature.
     """
     def __init__(self, direction='followed_by', activity_name_field='concept:name'):
@@ -105,7 +105,7 @@ class RelationalEntropyFeatureExtractor(FeatureExtractor):
         """
         return features.get_relational_entropy(log, direction=self.direction, activity_name_field=self.activity_name_field)
 
-class RelationshipTypesCountFeatureExtractor(FeatureExtractor):
+class RelationshipTypesCountFE(FeatureExtractor):
     def __init__(self):
         """Initialize a feature extractor that extracts the relationship types count feature.
         """
@@ -117,7 +117,7 @@ class RelationshipTypesCountFeatureExtractor(FeatureExtractor):
         bi_directional_rtc = features.get_bi_directional_relationship_type_counts(log)
         return bi_directional_rtc
 
-class RunsFeatureExtractor(FeatureExtractor):
+class RunsFE(FeatureExtractor):
     def __init__(self):
         """Initialize a feature extractor that extracts the runs feature.
         """

@@ -155,7 +155,7 @@ def evaluate_single_detector(true_change_points, detected_change_points, max_dis
             # check if detected change point is within max_distance to detected change point
             if abs(true_change_point - detected_change_point) <= max_distance:
                 number_of_correct_detections += 1
-                lags.append(true_change_point - detected_change_point)
+                lags.append(detected_change_point - true_change_point)
 
                 # we can break here because the detected change points have been sorted
                 break

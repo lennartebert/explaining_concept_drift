@@ -21,13 +21,13 @@ class ChangePointExtractor(ABC):
         """
         pass
 
-class PhiFilterChangePointExtractor(ChangePointExtractor):
+class PhiFilterCPE(ChangePointExtractor):
     """Applies a phi-filter to extract change points.
     
     The general idea is that there need to be a minimum of "phi" 
     observations below a threshold to count a change.
     """
-    def __init__(self, threshold, phi, rho=None):
+    def __init__(self, threshold, phi, rho=0):
         """Initialize the phi filer.
         
         Args:

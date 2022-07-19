@@ -265,7 +265,7 @@ def get_simple_change_point_format_from_data_info(data_info):
     return simple_cp_explanations
 
 
-def get_simple_change_point_list_from_explainer(change_point_explanations):
+def get_simple_change_point_list_from_dictonary(change_point_explanations):
     # flatten explanations into single list
     change_point_explanations_list = sum(change_point_explanations.values(), [])
 
