@@ -50,11 +50,11 @@ class AttributeFeatureExtractor(FeatureExtractor):
         self.attribute_level = attribute_level
         self.attribute_name = attribute_name
             
-    def extract(self, log):
+    def extract(self, event_log):
         """Extract the attribute values from the given log.
         
         Args:
-            log: A pm4py event log.
+            event_log: A pm4py event log.
         
         Returns:
             Series of observations for the specified event log.
@@ -62,13 +62,13 @@ class AttributeFeatureExtractor(FeatureExtractor):
         result_list = []
         
         if self.attribute_level == 'trace':
-            for trace in log:
+            for trace in event_log:
                 if self.attribute_name in trace.attributes:
                     result_list.append(trace.attributes[self.attribute_name])
                 else:
                     result_list.append('Attribute not defined.')
         elif self.attribute_level == 'event':
-            event_stream = pm4py.convert.convert_to_event_stream(log)
+            event_stream = pm4py.convert.convert_to_event_stream(event_log)
             for event in event_stream:
                 if self.attribute_name in event:
                     result_list.append(event[self.attribute_name])

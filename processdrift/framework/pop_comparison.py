@@ -7,29 +7,15 @@ import numpy as np
 import scipy.stats
 import math
 
-class PopComparer(ABC):
-    """PopComparer compares two populations.
+class PopulationComparer(ABC):
+    """PopulationComparer compares two populations.
     
     The lower the resulting value, the more significantly different are both populations.
     """
     
-    def _preprocess(self, population_1, population_2):
-        """Preprocess both populations. Does not need to be implemented.
-        
-        Note that both populations are passed in case the preprocessing needs to know both populations, e.g., for min-max scaling.
-        
-        Args:
-            population_1: The first population.
-            population_2: The second population.
-            
-        Returns:
-            (population_1, population_2): The two preprocessed populations.
-        """
-        return population_1, population_2
-    
     @abstractmethod
-    def _get_comparison_measure(self, population_1, population_2):
-        """Calculates the comparison measure between two populations. The lower, the more significantly different are the two populations.
+    def compare(self, population_1, population_2):
+        """Preprocesses and compares two populations.
         
         Args:
             population_1: The first population. Also called the expected population.
@@ -39,28 +25,14 @@ class PopComparer(ABC):
             Comparison measure between 0 and 1.
         """
         pass
-    
-    def compare(self, population_1, population_2):
-        """Preprocesses and compares two populations
-        
-        Args:
-            population_1: The first population. Also called the expected population.
-            population_2: The first population. Also called the observed population.
-            
-        Returns:
-            Comparison measure between 0 and 1.
-        """
-        population_1_preprocessed, population_2_preprocessed = self._preprocess(population_1, population_2)
-        difference = self._get_comparison_measure(population_1_preprocessed, population_2_preprocessed)
-        return difference
 
     def __repr__(self):
         return self.__class__.__name__
-    
-class KSTestPopComparer(PopComparer):
+
+class KSTestPC(PopulationComparer):
     """Perform a two-sample Kolmogorov-Smirnov test to compare two populations.
     """
-    def _get_comparison_measure(self, population_1, population_2):
+    def compare(self, population_1, population_2):
         """Calculates the Kolmogorov-Smirnov test as comparison measure measure between the two populations.
         
         Args:
@@ -74,10 +46,10 @@ class KSTestPopComparer(PopComparer):
         return p_value
 
 
-class HotellingsTSquaredPopComparer(PopComparer):
+class HotellingsTSquaredPC(PopulationComparer):
     """Perform a Hotellings T Squared test to compare two populations.
     """
-    def _get_comparison_measure(self, population_1, population_2):
+    def compare(self, population_1, population_2):
         """Calculates the Hotellings T Squared test as comparison measure measure between the two populations.
         
         Args:
@@ -118,45 +90,14 @@ class HotellingsTSquaredPopComparer(PopComparer):
                 raise err
         
         return p_value
-    
 
-class ProbabilityDistributionComparer(PopComparer, ABC):
-    """Abstract class to be inhereted from if the PopComparer works based on probability distributions. 
-    """
-    def _preprocess(self, population_1, population_2):
-        pop_1_series = pd.Series(population_1)
-        pop_2_series = pd.Series(population_2)
-        
-         # get value counts for each series
-        value_counts_a = pop_1_series.value_counts()
-        value_counts_b = pop_2_series.value_counts()
-        
-        # get the relative probabilities
-        probas_a = value_counts_a / sum(value_counts_a)
-        probas_b = value_counts_b / sum(value_counts_b)
-        
-        # let both arrays have the same length
-        value_counts_df = pd.concat([probas_a, probas_b], axis=1)
-
-        # rename the columns
-        value_counts_df.columns = ['expected', 'observed']
-
-        # replace nan with 0
-        value_counts_df = value_counts_df.fillna(0)
-
-        # compute the observed frequencies in each category
-        distribution_expected = value_counts_df['expected']
-        distribution_observed = value_counts_df['observed']
-        
-        return distribution_expected, distribution_observed
-
-class HellingerDistanceComparer(ProbabilityDistributionComparer):
+class HellingerDistancePC(PopulationComparer):
     """Get the Hellinger Distance between the two populations.
     
     In preprocessing, both populations are converted to probability distributions. 
     """
     
-    def _get_comparison_measure(self, population_1, population_2):
+    def compare(self, population_1, population_2):
         """Calculates the Hellinger Distance between the two populations.
         
         Args:
@@ -166,18 +107,75 @@ class HellingerDistanceComparer(ProbabilityDistributionComparer):
         Returns:
             Hellinger Distance (0 to 1, the lower, the more different).
         """
-        hellinger_distance = np.sqrt(np.sum((np.sqrt(population_1) - np.sqrt(population_2)) ** 2)) / np.sqrt(2)
+        p, q = preprocess_get_normalized_contingency_table(population_1, population_2)
+
+        hellinger_distance = np.sqrt(np.sum((np.sqrt(p) - np.sqrt(q)) ** 2)) / np.sqrt(2)
         
         # we return 0 when both populations are different and 1 if they are the same. Therefore, the metric needs to be inverted.
         comparison_measure = 1 - hellinger_distance
         return comparison_measure
 
-def get_contingency_table(pop_1_array, pop_2_array):
+class ChiSquaredPC(PopulationComparer):
+    """Get the Chi Squared Distance between the two populations.
+    """    
+    def compare(self, population_1, population_2):
+
+        """Calculates the Chi-square test between the two populations.
+        
+        Args:
+            population_1: The first population.
+            population_2: The first population.
+            
+        Returns:
+            p-value for Chi-Square test for both populations.
+        """
+        # get the contingency table
+        contingency_table = preprocess_get_contingency_table(population_1, population_2)
+
+        # calculate the chi-squared p-value
+        stat, p_value, dof, expected = scipy.stats.chi2_contingency(contingency_table)
+
+        # check if all expected values are >= 5
+        if (expected < 5).any():
+            p_value = np.NaN
+
+        return p_value
+
+class GTestPC(PopulationComparer):
+    """Get the G-test result for the two populations.
+    """
+    def compare(self, population_1, population_2):
+        """Calculates the G-test between the two populations.
+        
+        Args:
+            population_1: The first population.
+            population_2: The first population.
+            
+        Returns:
+            p-value for G-test for both populations.
+        """
+        # get the contingency table
+        contingency_table = preprocess_get_contingency_table(population_1, population_2)
+
+        # calculate the chi-squared p-value
+        stat, p_value, dof, expected = scipy.stats.chi2_contingency(contingency_table, lambda_="log-likelihood")
+
+        # check if all expected values are >= 5
+        if (expected < 5).any():
+            p_value = np.NaN
+        
+        return p_value
+
+def preprocess_get_contingency_table(pop_1_array, pop_2_array):
     """Get a numpy contingency table from two arrays of samples.
     
     Args:
         pd_series_1: First sample array.
         pd_series_2: Second sample array.
+
+
+    Returns:
+        Contingency table as numpy array. Population 1 values in first row, population 2 values in second row.
     """
     pop_1_counter = Counter(pop_1_array)
     pop_2_counter = Counter(pop_2_array)
@@ -191,81 +189,17 @@ def get_contingency_table(pop_1_array, pop_2_array):
 
     return np.array(result_array)
 
-class ChiSquaredComparer(PopComparer):
-    """Get the Chi Squared Distance between the two populations.
-    """    
-    def _get_comparison_measure(self, population_1, population_2):
-
-        """Calculates the Chi-square test between the two populations.
+def preprocess_get_normalized_contingency_table(pop_1_array, pop_2_array):
+    """Gets a distribution table. This table is like a contingency table but normalizes the occurence frequncies.
         
-        Args:
-            population_1: The first population.
-            population_2: The first population.
-            
-        Returns:
-            p-value for Chi-Square test for both populations.
-        """
-        # get the contingency table
-        contingency_table = get_contingency_table(population_1, population_2)
-
-        # calculate the chi-squared p-value
-        stat, p_value, dof, expected = scipy.stats.chi2_contingency(contingency_table)
-
-        # check if all expected values are >= 5
-        if (expected < 5).any():
-            p_value = np.NaN
-
-        return p_value
-
-class GTestComparer(PopComparer):
-    """Get the G-test result for the two populations.
+    Args:
+        pd_series_1: First sample array.
+        pd_series_2: Second sample array.
+    
+    Returns:
+        Normalized contingency table as numpy array. Population 1 values in first row, population 2 values in second row.
     """
-    def _get_comparison_measure(self, population_1, population_2):
-        """Calculates the G-test between the two populations.
-        
-        Args:
-            population_1: The first population.
-            population_2: The first population.
-            
-        Returns:
-            p-value for G-test for both populations.
-        """
-        # get the contingency table
-        contingency_table = get_contingency_table(population_1, population_2)
-
-        # calculate the chi-squared p-value
-        stat, p_value, dof, expected = scipy.stats.chi2_contingency(contingency_table, lambda_="log-likelihood")
-
-        # check if all expected values are >= 5
-        if (expected < 5).any():
-            p_value = np.NaN
-        
-        return p_value
-
-
-# TODO finalize docstrings and delete unused functions.
-def _all_equal(series_1, series_2):
-    """Return whether all values in series are equal or different"""
-    
-    # do both series have the same classes?
-    series_1_value_counts = series_1.value_counts()
-    series_2_value_counts = series_2.value_counts()
-    
-    if set(series_1_value_counts.index) != set(series_2_value_counts.index):
-        return False
-
-    # check if both series have the exact same count of unique values
-    if series_1_value_counts.equals(series_2_value_counts):
-        return True
-    
-    return False
-
-def _all_dissimilar(series_1, series_2):
-    """Return whether all series 2 has no values that exist in series 1"""
-    set_series_1 = set(series_1.values)
-    set_series_2 = set(series_2.values)
-    
-    if len(set_series_1) == len(set_series_1 - set_series_2): return True
-    
-    return False
-
+    contingency_table = preprocess_get_contingency_table(pop_1_array, pop_2_array)
+    sum_of_rows = contingency_table.sum(axis=1)
+    normalized_array = contingency_table / sum_of_rows[:, np.newaxis]
+    return normalized_array
