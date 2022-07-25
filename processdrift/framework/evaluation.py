@@ -37,7 +37,7 @@ def evaluate_explanations(true_change_explanations, detected_change_explanations
             if abs(true_change_point - detected_change_point) <= max_distance \
                 and true_change_attribute == detected_change_attribute:
                 number_of_correct_detections += 1
-                lags.append(true_change_point - detected_change_point)
+                lags.append(detected_change_point - true_change_point)
 
                 # we can break here because the detected change points have been sorted
                 break

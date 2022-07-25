@@ -176,9 +176,7 @@ def _get_drifted_distributions(attribute_value_count, change_type=None):
     """Get two distributions, the baseline distribution and the drifted distribution.
     
     The change_type determines in which regard both are different.
-    
-    The two distributions are guaranteed to be significantly different at 10 observations.
-    
+        
     Args:
         attribute_value_count: How many attribute values there are.
         change_type: 'new_value', 'new_distribution'. New value introduces a new value in the changed distribution. New distribution completely changes the new distribution.
@@ -200,24 +198,16 @@ def _get_drifted_distributions(attribute_value_count, change_type=None):
     else:
         baseline_distribution = _get_distribution(attribute_value_count)
         
-    drifted_distribution_found = False
     drifted_distribution = None
+    if change_type == 'new_value':
+        new_value_probability = 0.05 + 0.95 * np.random.random()
+
+        drifted_distribution = baseline_distribution.copy()
+        drifted_distribution = list(np.array(drifted_distribution) * (1 - new_value_probability))
+        drifted_distribution[-1] = new_value_probability
+    else:
+        drifted_distribution = _get_distribution(attribute_value_count)
     
-    while not drifted_distribution_found:
-        if change_type == 'new_value':
-            new_value_probability = 0.05 + 0.95 * np.random.random()
-
-            drifted_distribution = baseline_distribution.copy()
-            drifted_distribution = list(np.array(drifted_distribution) * (1 - new_value_probability))
-            drifted_distribution[-1] = new_value_probability
-        else:
-            drifted_distribution = _get_distribution(attribute_value_count)
-        
-        hellinger_distance = np.sqrt(np.sum((np.sqrt(baseline_distribution) - np.sqrt(drifted_distribution)) ** 2)) / np.sqrt(2)
-        
-        if hellinger_distance > 0.3:
-            drifted_distribution_found = True
-
     return baseline_distribution, drifted_distribution
 
 

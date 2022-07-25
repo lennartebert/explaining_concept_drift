@@ -6,10 +6,27 @@ import pandas as pd
 import numpy as np
 import csv
 
+import numbers
+from operator import itemgetter
+from pm4py.util import xes_constants as xes
+import math
+
+import time
+
 from opyenxes.data_in import XesXmlParser
 from opyenxes.data_out import XesXmlSerializer
 
 from processdrift import generate_attributes
+
+from pm4py.objects.log.importer.xes import importer as xes_importer
+from processdrift.framework import drift_detection
+from processdrift.framework import drift_explanation
+from processdrift.framework import feature_extraction
+from processdrift.framework import population_comparison
+from processdrift.framework import windowing
+from processdrift.framework import evaluation
+from processdrift.framework import change_point_extraction
+
 
 def get_trace_attributes(log):
     """Get the trace level attributes from a log.
@@ -265,6 +282,96 @@ def get_simple_change_point_format_from_data_info(data_info):
     return simple_cp_explanations
 
 
+def get_attributes_and_types_for_synthetic_data(relevant_attributes=5, irrelevant_attributes=5):
+    list_of_triplets = []
+    attribute_level = 'trace'
+    attribute_type = 'categorical'
+    for i in range(irrelevant_attributes):
+            attribute_name = f'irrelevant_attribute_{(i + 1):02d}'
+            triplet = (attribute_name, attribute_level, attribute_type)
+            list_of_triplets.append(triplet)
+    for i in range(relevant_attributes):
+        attribute_name = f'relevant_attribute_{(i + 1):02d}'
+        triplet = (attribute_name, attribute_level, attribute_type)
+        list_of_triplets.append(triplet)
+    return list_of_triplets
+    
+
+def get_data_type(attribute_value):
+    """Gets the datatype of an attribute based on the python type.
+
+    Args:
+        attribute_value: Value of an attribute.capitalize
+
+    Returns:
+        Whether the attribute is 'categorical' or 'continuous' based on its python type.
+    """
+    if isinstance(attribute_value, numbers.Number):
+        return 'continuous'
+    else:
+        return 'categorical'
+
+def automatically_get_attributes_and_data_types(event_log, get_trace_attributes=True, get_event_attributes=True):
+    """Automatically gets a list of triplets of available attributes in an event log including their datatypes.
+    
+    The datatype of the attribute is determined by observing the datatypes in the event log.
+
+    Args:
+        event_log: A pm4py event log.
+        get_trace_attributes: Whether or not to get the trace attributes.
+        get_event_attributes: Whether or not to get the event attributes.
+
+    Returns:
+        List of (attribute_value, attribute_level, attribute_type) triplets.
+    """
+
+    # build a dictionary with all attributes on trace and event level
+    attributes_and_observed_types = {}
+
+    for trace in event_log:
+        # get the trace attribute types
+        trace_attributes = trace.attributes
+        for attribute_name, attribute_value in trace_attributes.items():
+            trace_attribute_tuple = (attribute_name, 'trace')
+            if trace_attribute_tuple not in attributes_and_observed_types:
+                attributes_and_observed_types[trace_attribute_tuple] = set([get_data_type(attribute_value)])
+            else:
+                attributes_and_observed_types[trace_attribute_tuple].add(get_data_type(attribute_value))
+        
+        # get the event attribute types
+        for event in trace:
+            for attribute_name, attribute_value in event.items():
+                trace_attribute_tuple = (attribute_name, 'event')
+                if trace_attribute_tuple not in attributes_and_observed_types:
+                    attributes_and_observed_types[trace_attribute_tuple] = set([get_data_type(attribute_value)])
+                else:
+                    attributes_and_observed_types[trace_attribute_tuple].add(get_data_type(attribute_value))
+    
+    # remove standard trace and event attributes
+    attributes_and_observed_types.pop((xes.DEFAULT_TRACEID_KEY, 'trace'), None)
+    attributes_and_observed_types.pop((xes.DEFAULT_START_TIMESTAMP_KEY, 'trace'), None)
+    attributes_and_observed_types.pop((xes.DEFAULT_TRANSITION_KEY, 'event'), None)
+    attributes_and_observed_types.pop((xes.DEFAULT_TIMESTAMP_KEY, 'event'), None)
+    attributes_and_observed_types.pop((xes.DEFAULT_NAME_KEY, 'event'), None)
+
+
+
+    # check if any attribute has more than one type, return that attribute to the user
+    failed = []
+    triplet_list = []
+    for (attribute_name, attribute_level), attribute_types  in attributes_and_observed_types.items():
+        if len(attribute_types) > 1:
+            failed.append((attribute_name, attribute_level))
+        triplet_list.append((attribute_name, attribute_level, next(iter(attribute_types))))
+    
+    if len(failed) > 0:
+        print(f'Detected multiple attribute types for the following attributes:')
+        failed_types = itemgetter(failed)(attributes_and_observed_types)
+        print(failed_types)
+    
+    return triplet_list
+
+
 def get_simple_change_point_list_from_dictonary(change_point_explanations):
     # flatten explanations into single list
     change_point_explanations_list = sum(change_point_explanations.values(), [])
@@ -274,12 +381,13 @@ def get_simple_change_point_list_from_dictonary(change_point_explanations):
     
     return cp_tuple_list
 
-def append_config_results(results_file_path, event_log_file_path, configuration_dict, results_dict, compute_time):
+def append_config_results(results_file_path, event_log_file_path, configuration_dict, results_dict, compute_time, experiment_name):
     configuration_dict_prepended = {f'config_{key}': val for key, val in configuration_dict.items()}
     merged_dictionary = configuration_dict_prepended | results_dict
 
     merged_dictionary['config_event_log_file_path'] = event_log_file_path
     merged_dictionary['compute_time'] = compute_time
+    merged_dictionary['experiment_name'] = experiment_name
 
     field_names = list(merged_dictionary.keys())
 
@@ -318,6 +426,160 @@ def get_all_files_in_dir(dir, include_files_in_subdirs=True):
             all_files.append(file_path)
                 
     return all_files
+
+def get_examples_of_event_attributes(event_log, number_examples, for_event_attributes=None):
+    """Get examples for all event attributes.
+    """
+    # sample some traces
+    sample_trace_numbers = np.random.choice(range(len(event_log)), number_examples, replace=False)
+    sample_traces = [event_log[trace] for trace in sample_trace_numbers]
+
+    # sample one event for each trace to add to the set of example event attributes
+    event_attribute_values_list = []
+    
+    for trace in sample_traces:
+        # choose a sample event from the trace
+        event_number = np.random.choice(range(len(trace)))
+        event = trace[event_number]
+
+        # if event_attributes is set, only get the defined event attributes from the event
+        filtered_event = {key:value for key, value in event.items() if key in for_event_attributes}
+
+        event_attribute_values_list.append(filtered_event)
+
+    # place event_attribute_values_list into DataFrame
+    event_attributes_example_df = pd.DataFrame().from_records(event_attribute_values_list)
+
+    # return dataframe
+    return event_attributes_example_df
+
+
+def get_examples_of_trace_attributes(event_log, number_examples, for_trace_attributes=None):
+    # sample some traces
+    sample_trace_numbers = np.random.choice(range(len(event_log)), number_examples, replace=False)
+    sample_traces = [event_log[trace] for trace in sample_trace_numbers]
+
+    # sample one event for each trace to add to the set of example event attributes
+    trace_attribute_values_list = []
+    for trace in sample_traces:
+        # get the trace attributes
+        trace_attributes = trace.attributes
+
+        if for_trace_attributes is not None:
+            # filter trace attributes for those in trace_attributes
+            trace_attributes  = {key: value for key, value in trace_attributes.items() if key in for_trace_attributes}
+        
+        trace_attribute_values_list.append(trace_attributes)
+    
+    # place event_attribute_values_list into DataFrame
+    trace_attributes_example_df = pd.DataFrame(trace_attribute_values_list)
+
+    # return dataframe
+    return trace_attributes_example_df
+
+def get_configurations(window_generator_types=['fixed', 'adaptive'],
+                        window_sizes=[100, 150, 200],
+                        thresholds = [0.05],
+                        max_distances = [300],
+                        slide_bys = [10, 20],
+                        proportional_phis = [0.25, 0.5, 1],
+                        proportional_rhos = [0.1]):
+    # build all possible configuration:
+    configurations = []
+    for window_generator_type in window_generator_types:
+        for window_size in window_sizes:
+                for threshold in thresholds:
+                    for max_distance in max_distances:
+                        for slide_by in slide_bys:
+                            for proportional_phi in proportional_phis:
+                                for proportional_rho in proportional_rhos:
+                                    configurations.append({
+                                        'window_generator_type': window_generator_type,
+                                        'window_size': window_size,
+                                        'threshold': threshold,
+                                        'max_distance': max_distance,
+                                        'slide_by': slide_by,
+                                        'proportional_phi': proportional_phi,
+                                        'proportional_rho': proportional_rho
+                                    })
+    return configurations
+
+def perform_synthetic_experiments(experiment_name, configurations, input_path, results_path, delete_if_results_exist=False, limit_iterations=None):
+    # get the true change points and true change point explanations
+    true_change_points = get_change_points_maardji_et_al_2013(10000)
+    number_relevant_attributes = 5
+    true_change_point_explanations = [(true_change_points[i], f'relevant_attribute_{i+1:02d}') for i in range(number_relevant_attributes)]
+    
+    # load all event logs from the input path
+    event_log_file_paths = get_all_files_in_dir(input_path, include_files_in_subdirs=True)
+
+    # primary drift detector stays always the same
+    primary_process_drift_detector = drift_detection.TrueKnownDD(true_change_points)
+
+    # delete results file if exists
+    if delete_if_results_exist:
+        if os.path.exists(results_path):
+            os.remove(results_path)
+    
+    # iterate all datasets with all settings
+    for i, event_log_file_path in enumerate(event_log_file_paths):
+        if limit_iterations is not None:
+            if i >= limit_iterations: break
+        
+        print(f'Event log {i}')
+        event_log = xes_importer.apply(event_log_file_path)
+
+        for configuration in configurations:
+            print(f'\nEvaluating configuration {configuration}')
+            
+            start_time = time.time()
+
+            window_generator_type = configuration['window_generator_type']
+            window_size = configuration['window_size']
+            threshold = configuration['threshold']
+            max_distance = configuration['max_distance']
+            slide_by = configuration['slide_by']
+            proportional_phi = configuration['proportional_phi']
+            proportional_rho = configuration['proportional_rho']
+            
+            window_generator = None
+            # build the secondary drift detector
+            if window_generator_type == 'fixed':
+                window_generator = windowing.FixedWG(window_size, slide_by=slide_by)
+            elif window_generator_type == 'adaptive':
+                window_generator = windowing.AdaptiveWG(window_size, slide_by=slide_by)
+            
+            phi = math.ceil(proportional_phi * window_size / slide_by)
+            rho = math.ceil(proportional_rho * window_size / slide_by)
+            
+            change_point_extractor = change_point_extraction.PhiFilterCPE(threshold, phi, rho)
+
+            attributes_and_types = get_attributes_and_types_for_synthetic_data()
+
+            secondary_drift_detectors = drift_detection.get_attribute_drift_detectors(
+                                                                                attributes_and_types,
+                                                                                window_generator,
+                                                                                change_point_extractor,
+                                                                                )
+            
+            drift_explainer = drift_explanation.DriftExplainer(primary_process_drift_detector, secondary_drift_detectors)
+
+            # calculate the drift explanations
+            drift_explanation_result = drift_explainer.get_possible_drift_explanations(event_log, max_distance)
+            
+            # evaluate the change point explanations
+            observed_drift_point_explanations_simple =  get_simple_change_point_list_from_dictonary(drift_explanation_result.possible_drift_explanations)    
+
+            result = evaluation.evaluate_explanations(true_change_point_explanations, observed_drift_point_explanations_simple, max_distance=window_size)
+            
+            # get end time
+            end_time = time.time()
+            # get the compute time and write into results
+            compute_time = end_time - start_time
+            
+            # write the configuration results to file
+            append_config_results(results_path, event_log_file_path, configuration, result, compute_time, experiment_name)
+
 
 # def save_experiment_results(experiment_name,
 #     dataset,

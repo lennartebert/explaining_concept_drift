@@ -7,7 +7,7 @@ import subprocess
 
 from abc import ABC, abstractmethod
 
-from processdrift.framework import feature_extraction
+from processdrift.framework import feature_extraction, population_comparison
 from processdrift.framework import windowing
 import pm4py
 
@@ -27,7 +27,7 @@ class DriftDetector(ABC):
             A DriftDetectionResult object with a change series and the change points.
         """
 
-class WindowTestDD(DriftDetector):
+class HypothesisTestDD(DriftDetector):
     """The drift detector gets a feature's change over time and can retrieve the according change points.
     """
     
@@ -321,53 +321,36 @@ class DriftDetectionResult():
         self.change_points = change_points
         self.change_series = change_series
 
-
-def get_all_attribute_drift_detectors(log, window_generator, population_comparer, change_point_extractor, level='trace', exclude_attributes=[]):
+def get_attribute_drift_detectors(attribute_level_types, window_generator, change_point_extractor, min_samples_per_test=5):
     """Factory function to get attribute drift detectors for all trace level attributes in an event log.
     
     Args:
-        log: A pm4py event log.
+        event_log: A pm4py event log.
+        attributes_and_types: List of triplets of attributes, attribute level and type.
         window_generator: A windowing.WindowGenerator() to know which windowing strategy to use.
         pupulation_comparer: A pop_comparison.PopComparer() to know how to compare the populations.
         change_point_extractor: A change_detection.ChangePointExtractor() to get change points from the change series.
-        level: 'trace', 'event' or 'trace_and_event'.
-        exclude_attributes: Event log attributes for which no drift detector should be generated.
     
     Returns:
         List of drift detectors, one for each attribute.
     """
-    
-    # get all trace attributes
-    trace_attributes = feature_extraction.get_all_trace_attributes(log)
-    
-    # remove attributes that shall be excluded
-    trace_attributes.difference_update(exclude_attributes)
 
-    # get all event attributes
-    event_attributes = feature_extraction.get_all_event_attributes(log)
-    
-    # remove attributes that shall be excluded
-    event_attributes.difference_update(exclude_attributes)
-    
     # create the new feature extractors and detectors
     drift_detectors = []
 
-    if level == 'trace' or level == 'trace_and_event':
-        for attribute_name in trace_attributes:
-            # get the unique feature extractor
-            new_feature_extractor = feature_extraction.AttributeFE(attribute_level='trace', attribute_name=attribute_name)
+    for attribute_name, attribute_level, attribute_type in attribute_level_types:
+            # create the feature extractor
+            feature_extractor = feature_extraction.AttributeFE(attribute_level=attribute_level, attribute_name=attribute_name)
             
-            # create the drift detector
-            drift_detector = WindowTestDD(new_feature_extractor, window_generator, population_comparer, change_point_extractor=change_point_extractor)
-            drift_detectors.append(drift_detector)
-    if level == 'event' or level == 'trace_and_event':
-        for attribute_name in event_attributes:
-            # get the unique feature extractor
-            new_feature_extractor = feature_extraction.AttributeFE(attribute_level='event', attribute_name=attribute_name)
-            
-            # create the drift detector
-            drift_detector = WindowTestDD(new_feature_extractor, window_generator, population_comparer, change_point_extractor=change_point_extractor)
-            drift_detectors.append(drift_detector)
-    
-    return drift_detectors
+            # create the population comparer
+            population_comparer = None
+            if attribute_type == 'categorical':
+                population_comparer = population_comparison.GTestPC(min_samples_per_test)
+            else:
+                population_comparer = population_comparison.KSTestPC(min_samples_per_test)
 
+            # create the drift detector
+            drift_detector = HypothesisTestDD(feature_extractor, window_generator, population_comparer, change_point_extractor)
+            drift_detectors.append(drift_detector)
+
+    return drift_detectors

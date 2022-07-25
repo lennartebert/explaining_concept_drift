@@ -117,7 +117,12 @@ class HellingerDistancePC(PopulationComparer):
 
 class ChiSquaredPC(PopulationComparer):
     """Get the Chi Squared Distance between the two populations.
-    """    
+    """
+
+    def __init__(self, minimum_expected_frequency = 5):
+        self.minimum_expected_frequency = minimum_expected_frequency
+
+
     def compare(self, population_1, population_2):
 
         """Calculates the Chi-square test between the two populations.
@@ -135,8 +140,8 @@ class ChiSquaredPC(PopulationComparer):
         # calculate the chi-squared p-value
         stat, p_value, dof, expected = scipy.stats.chi2_contingency(contingency_table)
 
-        # check if all expected values are >= 5
-        if (expected < 5).any():
+        # check if all expected values are >= self.minimum_expected_frequency
+        if (expected < self.minimum_expected_frequency).any():
             p_value = np.NaN
 
         return p_value
@@ -144,6 +149,9 @@ class ChiSquaredPC(PopulationComparer):
 class GTestPC(PopulationComparer):
     """Get the G-test result for the two populations.
     """
+    def __init__(self, minimum_expected_frequency = 5):
+        self.minimum_expected_frequency = minimum_expected_frequency
+
     def compare(self, population_1, population_2):
         """Calculates the G-test between the two populations.
         
@@ -161,7 +169,7 @@ class GTestPC(PopulationComparer):
         stat, p_value, dof, expected = scipy.stats.chi2_contingency(contingency_table, lambda_="log-likelihood")
 
         # check if all expected values are >= 5
-        if (expected < 5).any():
+        if (expected < self.minimum_expected_frequency).any():
             p_value = np.NaN
         
         return p_value

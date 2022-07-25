@@ -375,6 +375,10 @@ def get_runs(traces):
         for edge in edges:
             activity_1 = edge[0]
             activity_2 = edge[1]
+
+            # do not add edge if activity_1 and activity_2 are the same (this would be removed in transitivity reduction anyways)
+            if activity_1 == activity_2: continue
+
             if activity_1 in concurrency_dict:
                 for conccurency in concurrency_dict[activity_1]:
                     if conccurency == activity_2:
