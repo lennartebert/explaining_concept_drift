@@ -320,6 +320,14 @@ class DriftDetectionResult():
     def __init__(self, change_points=None, change_series=None):
         self.change_points = change_points
         self.change_series = change_series
+    
+    def __repr__(self):
+        result = f'Change points: {self.change_points}'
+        if self.change_series is not None:
+            result = f'{result}\nHas a change series.'
+        else:
+            result = f'{result}\nHas no change series.'
+        return result
 
 def get_attribute_drift_detectors(attribute_level_types, window_generator, change_point_extractor, min_samples_per_test=5):
     """Factory function to get attribute drift detectors for all trace level attributes in an event log.
@@ -347,7 +355,7 @@ def get_attribute_drift_detectors(attribute_level_types, window_generator, chang
             if attribute_type == 'categorical':
                 population_comparer = population_comparison.GTestPC(min_samples_per_test)
             else:
-                population_comparer = population_comparison.KSTestPC(min_samples_per_test)
+                population_comparer = population_comparison.KSTestPC()
 
             # create the drift detector
             drift_detector = HypothesisTestDD(feature_extractor, window_generator, population_comparer, change_point_extractor)

@@ -46,7 +46,7 @@ class AttributeFE(FeatureExtractor):
             attribute_name: Name of the attribute.
             included_none: If the attribute is not set for the event/trace, include "None" in the result list.
         """
-        super().__init__(f'{attribute_name}')
+        super().__init__(f'{attribute_level}: {attribute_name}')
         self.attribute_level = attribute_level
         self.attribute_name = attribute_name
             
@@ -66,14 +66,14 @@ class AttributeFE(FeatureExtractor):
                 if self.attribute_name in trace.attributes:
                     result_list.append(trace.attributes[self.attribute_name])
                 else:
-                    result_list.append('Attribute not defined.')
+                    result_list.append(None)
         elif self.attribute_level == 'event':
             event_stream = pm4py.convert.convert_to_event_stream(event_log)
             for event in event_stream:
                 if self.attribute_name in event:
                     result_list.append(event[self.attribute_name])
                 else:
-                    result_list.append('Attribute not defined.')
+                    result_list.append(None)
         
         # convert to numpy array
         result_array = np.array(result_list)

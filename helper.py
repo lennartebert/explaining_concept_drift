@@ -27,40 +27,6 @@ from processdrift.framework import windowing
 from processdrift.framework import evaluation
 from processdrift.framework import change_point_extraction
 
-
-def get_trace_attributes(log):
-    """Get the trace level attributes from a log.
-    
-    TODO: implement get event attributes
-    
-    Args:
-        log: A pm4py Eventlog
-    
-    Returns:
-        A dictionary with the attribute name as key and series with trace attributes.
-    """
-    # get all trace attributes as one dataframe
-    trace_attributes = {}
-    for i, trace in enumerate(log):
-        trace_attributes[i] = trace.attributes
-    
-    trace_attribute_df = pd.DataFrame().from_dict(trace_attributes, orient='index')
-    
-    # than convert the attributes back to a dictionary of series
-    attributes_dict = {}
-    for column_name in trace_attribute_df.columns:
-        attribute_series = trace_attribute_df[column_name]
-        
-        # the type of each attribute should either be string or Numeric
-        is_numeric = np.issubdtype(attribute_series.dtype, np.number)
-        # if type is not numeric, convert to string
-        if not is_numeric:
-            attribute_series = attribute_series.astype('category')
-            
-        attributes_dict[column_name] = attribute_series
-    
-    return attributes_dict
-
 def get_log(dataset_name):
     """Get the event log for a specified dataset.
     
@@ -311,15 +277,15 @@ def get_data_type(attribute_value):
     else:
         return 'categorical'
 
-def automatically_get_attributes_and_data_types(event_log, get_trace_attributes=True, get_event_attributes=True):
+def automatically_get_attributes_and_data_types(event_log, selected_trace_attributes=None, selected_event_attributes=None):
     """Automatically gets a list of triplets of available attributes in an event log including their datatypes.
     
     The datatype of the attribute is determined by observing the datatypes in the event log.
 
     Args:
         event_log: A pm4py event log.
-        get_trace_attributes: Whether or not to get the trace attributes.
-        get_event_attributes: Whether or not to get the event attributes.
+        trace_attributes: Only get date types for the specified trace attributes. If None, all trace attributes are returned.
+        event_attributes: Only get date types for the specified event attributes. If None, all event attributes are returned.
 
     Returns:
         List of (attribute_value, attribute_level, attribute_type) triplets.
@@ -331,7 +297,13 @@ def automatically_get_attributes_and_data_types(event_log, get_trace_attributes=
     for trace in event_log:
         # get the trace attribute types
         trace_attributes = trace.attributes
+
+        # only keep those trace attributes that are in the trace attribute list
+
         for attribute_name, attribute_value in trace_attributes.items():
+            if selected_trace_attributes is not None:
+                if attribute_name not in selected_trace_attributes:
+                    continue
             trace_attribute_tuple = (attribute_name, 'trace')
             if trace_attribute_tuple not in attributes_and_observed_types:
                 attributes_and_observed_types[trace_attribute_tuple] = set([get_data_type(attribute_value)])
@@ -341,6 +313,9 @@ def automatically_get_attributes_and_data_types(event_log, get_trace_attributes=
         # get the event attribute types
         for event in trace:
             for attribute_name, attribute_value in event.items():
+                if selected_event_attributes is not None:
+                    if attribute_name not in selected_event_attributes:
+                        continue
                 trace_attribute_tuple = (attribute_name, 'event')
                 if trace_attribute_tuple not in attributes_and_observed_types:
                     attributes_and_observed_types[trace_attribute_tuple] = set([get_data_type(attribute_value)])
@@ -348,13 +323,11 @@ def automatically_get_attributes_and_data_types(event_log, get_trace_attributes=
                     attributes_and_observed_types[trace_attribute_tuple].add(get_data_type(attribute_value))
     
     # remove standard trace and event attributes
-    attributes_and_observed_types.pop((xes.DEFAULT_TRACEID_KEY, 'trace'), None)
-    attributes_and_observed_types.pop((xes.DEFAULT_START_TIMESTAMP_KEY, 'trace'), None)
-    attributes_and_observed_types.pop((xes.DEFAULT_TRANSITION_KEY, 'event'), None)
-    attributes_and_observed_types.pop((xes.DEFAULT_TIMESTAMP_KEY, 'event'), None)
-    attributes_and_observed_types.pop((xes.DEFAULT_NAME_KEY, 'event'), None)
-
-
+    # attributes_and_observed_types.pop((xes.DEFAULT_TRACEID_KEY, 'trace'), None)
+    # attributes_and_observed_types.pop((xes.DEFAULT_START_TIMESTAMP_KEY, 'trace'), None)
+    # attributes_and_observed_types.pop((xes.DEFAULT_TRANSITION_KEY, 'event'), None)
+    # attributes_and_observed_types.pop((xes.DEFAULT_TIMESTAMP_KEY, 'event'), None)
+    # attributes_and_observed_types.pop((xes.DEFAULT_NAME_KEY, 'event'), None)
 
     # check if any attribute has more than one type, return that attribute to the user
     failed = []

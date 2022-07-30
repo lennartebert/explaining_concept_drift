@@ -112,7 +112,8 @@ class DriftExplanationResult():
         plot_primary_change_series=False,
         plot_annotations=False,
         threshold=0.05,
-        offset_legend=-0.15):
+        offset_legend=-0.15,
+        ylabel='p-value'):
         """Plots the primary and secondary change series returned by DriftExplainer.get_primary_and_secondary_changes(event_log).
     
         Args:
@@ -183,7 +184,7 @@ class DriftExplanationResult():
 
             # give a y label to all plots in first column
             if i % columns == 0:
-                ax.set_ylabel('p-value')
+                ax.set_ylabel(ylabel)
 
             # give x labels to last row
             # e.g. 2 columns and 3 rows
