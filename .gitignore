@@ -1,5 +1,5 @@
 #### Custom .gitignore
-pm4py-concept-drift/*
+pm4py-concept-drift*
 ProDrift2.5/*
 results/*
 profile.txt
