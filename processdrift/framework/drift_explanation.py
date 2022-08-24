@@ -5,6 +5,7 @@ import math
 from matplotlib import gridspec
 import matplotlib.pyplot as plt
 from matplotlib import lines
+import pandas as pd
 
 
 class DriftExplainer():
@@ -80,24 +81,24 @@ class DriftExplainer():
         # get rank the secondary change point detectors by how close the secondary change point was to the primary change point
         change_point_explanations = {}
         for primary_change_point in primary_change_points:            
-            distances_to_change_point = []
+            lag_to_change_point = []
             for secondary_change_point, drift_detector in secondary_time_detector_tuples:
-                distance = secondary_change_point - primary_change_point
+                lag = secondary_change_point - primary_change_point
                 
                 # keep distance in range max_distance
-                if max_distance is not None and abs(distance) > max_distance:
+                if max_distance is not None and abs(lag) > max_distance:
                     continue
                 
-                distances_to_change_point.append({
+                lag_to_change_point.append({
                     'detector': drift_detector,
                     'change_point': secondary_change_point,
-                    'distance': distance
+                    'lag': lag
                 })
             
             # sort by change point distance
-            distances_to_change_point = sorted(distances_to_change_point, key=lambda change_point_explanation: abs(change_point_explanation['distance']))
+            lag_to_change_point = sorted(lag_to_change_point, key=lambda change_point_explanation: abs(change_point_explanation['lag']))
             
-            change_point_explanations[primary_change_point] = distances_to_change_point
+            change_point_explanations[primary_change_point] = lag_to_change_point
         
         return change_point_explanations
 
@@ -109,102 +110,131 @@ class DriftExplanationResult():
         self.possible_drift_explanations = possible_drift_explanations
     
     def plot(self, columns=2,
-        plot_primary_change_series=False,
-        plot_annotations=False,
-        threshold=0.05,
-        offset_legend=-0.15,
-        ylabel='p-value'):
-        """Plots the primary and secondary change series returned by DriftExplainer.get_primary_and_secondary_changes(event_log).
-    
-        Args:
-            columns: Number of columns
-            plot_primary_change_series: Whether or not to plot the primary change series.
-            plot_annotations: Whether or not to plot annotations for each change point.
-            threshold: Value or p-value threshold.
-            offset_legend: Vertical offset of the plot's legend.
+            plot_primary_change_series=False,
+            plot_annotations=False,
+            threshold=0.05,
+            offset_legend=-0.15,
+            ylabel='p-value'):
+            """Plots the primary and secondary change series returned by DriftExplainer.get_primary_and_secondary_changes(event_log).
         
-        Returns:
-            Plot.
-        """
-        # get the primary and secondary change
-        primary_change_points = self.primary_dd_result.change_points
-        primary_change_series = self.primary_dd_result.change_series
-        secondary_change_dict = self.secondary_dd_result_dictionary
-        
-        n = len(secondary_change_dict.keys())
-        rows = max(1, int(math.ceil(n / columns))) # set the row count to at least 1
-
-        gs = gridspec.GridSpec(rows, columns)
-        fig = plt.figure(dpi=200, figsize = (8,2*rows))
-        
-        # get sorted attribute list
-        attribute_list = sorted(list(secondary_change_dict.keys()))
-        
-        # plot all secondary values
-        for i, attribute_name in enumerate(attribute_list):
-            secondary_change_series = secondary_change_dict[attribute_name].change_series
-            secondary_change_points = secondary_change_dict[attribute_name].change_points
-
-            ax = fig.add_subplot(gs[i])
+            Args:
+                columns: Number of columns
+                plot_primary_change_series: Whether or not to plot the primary change series.
+                plot_annotations: Whether or not to plot annotations for each change point.
+                threshold: Value or p-value threshold.
+                offset_legend: Vertical offset of the plot's legend.
             
-            # plot the change points by a red line
-            for change_point in primary_change_points:
-                plt.axvline(x=change_point, color='red', linewidth=1)
-
-            # plot the threshold as a grey line
-            if threshold is not None:
-                plt.axhline(y=threshold, color='grey', linewidth=1)
-
-            # based on user choice, plot the primary change series
-            if plot_primary_change_series:
-                ax.plot(primary_change_series, color='red', linestyle='dashed')
-
-            ax.plot(secondary_change_series)
+            Returns:
+                Plot.
+            """
+            # get the primary and secondary change
+            primary_change_points = self.primary_dd_result.change_points
+            primary_change_series = self.primary_dd_result.change_series
+            secondary_change_dict = self.secondary_dd_result_dictionary
             
-            x = secondary_change_points
-            # check if there were secondary change points
-            if x is not None:
-                y = list(secondary_change_series.loc[secondary_change_points])
-                ax.scatter(x=x, 
-                    y=y,
-                    marker='x',
-                    color='black'
-                )
+            n = len(secondary_change_dict.keys())
+            rows = max(1, int(math.ceil(n / columns))) # set the row count to at least 1
+
+            gs = gridspec.GridSpec(rows, columns)
+            fig = plt.figure(dpi=200, figsize = (8,2*rows))
             
-            if plot_annotations:
-                for i, secondary_change_point in enumerate(x):
-                    change_point_trace = x[i]
-                    change_point_y = y[i]
-                    ax.annotate(f'({change_point_trace}, {change_point_y:.2f})', (x[i], y[i]))
+            # get sorted attribute list
+            attribute_list = sorted(list(secondary_change_dict.keys()))
+            
+            # plot all secondary values
+            for i, attribute_name in enumerate(attribute_list):
+                secondary_change_series = secondary_change_dict[attribute_name].change_series
+                secondary_change_points = secondary_change_dict[attribute_name].change_points
 
-            # set the y axis so all changes in the data can be clearly seen
-            plt.ylim(-0.1, 1.1)
-            plt.xlim(0, primary_change_series.index[-1])
-            ax.title.set_text(attribute_name)
+                ax = fig.add_subplot(gs[i])
+                
+                # plot the change points by a red line
+                for change_point in primary_change_points:
+                    plt.axvline(x=change_point, color='red', linewidth=1)
 
-            # give a y label to all plots in first column
-            if i % columns == 0:
-                ax.set_ylabel(ylabel)
+                # plot the threshold as a grey line
+                if threshold is not None:
+                    plt.axhline(y=threshold, color='grey', linewidth=1)
 
-            # give x labels to last row
-            # e.g. 2 columns and 3 rows
-            # 1, 2, 3, 4 -> FALSE; 5, 6 -> True
-            if math.ceil((i+1)/columns) == rows:
-                ax.set_xlabel('traces')
-        
-        # add a title
-        fig.suptitle('Attribute Change over Time')
+                # based on user choice, plot the primary change series
+                if plot_primary_change_series:
+                    ax.plot(primary_change_series, color='red', linestyle='dashed')
 
-        fig.tight_layout()
-        
-        # create the legend
-        legend_elements = [lines.Line2D([0], [0], color='red', linestyle='solid', label='Primary Change Points'),
-            lines.Line2D([0], [0], color='grey', linestyle='solid', label=f'Threshold ({threshold})'),
-            lines.Line2D([0], [0], color='black', marker='x', linestyle='None', label=f'Detected Secondary Change Points')
-        ]
+                plot_ax = ax.plot(secondary_change_series, color='blue', 
+                                                marker=".", linewidth=0.75, markersize=1,
+                                                label=f"Secondary {ylabel}s")
+                
+                secondary_change_line = plot_ax[0]
+                
+                x = secondary_change_points
+                # check if there were secondary change points
+                if x is not None:
+                    y = list(secondary_change_series.loc[secondary_change_points])
+                    ax.scatter(x=x, 
+                        y=y,
+                        marker='x',
+                        color='black'
+                    )
+                
+                if plot_annotations:
+                    for i, secondary_change_point in enumerate(x):
+                        change_point_trace = x[i]
+                        change_point_y = y[i]
+                        ax.annotate(f'({change_point_trace}, {change_point_y:.2f})', (x[i], y[i]))
 
-        fig.legend(handles=legend_elements, loc='lower center', bbox_to_anchor=(0.5, offset_legend))
-        
-        plt.show()
+                # set the y axis so all changes in the data can be clearly seen
+                plt.ylim(-0.1, 1.1)
+                plt.xlim(0, primary_change_series.index[-1])
+                ax.title.set_text(attribute_name)
 
-        return plt
+                # give a y label to all plots in first column
+                if i % columns == 0:
+                    ax.set_ylabel(ylabel)
+
+                # give x labels to last row
+                # e.g. 2 columns and 3 rows
+                # 1, 2, 3, 4 -> FALSE; 5, 6 -> True
+                if math.ceil((i+1)/columns) == rows:
+                    ax.set_xlabel('traces')
+            
+            # add a title
+            fig.suptitle('Attribute Change over Time')
+
+            fig.tight_layout()
+            
+            # create the legend
+            legend_elements = [
+                lines.Line2D([0], [0], color='red', linestyle='solid', label='Primary Change Points'),
+                secondary_change_line,
+                lines.Line2D([0], [0], color='grey', linestyle='solid', label=f'Threshold ({threshold})'),
+                lines.Line2D([0], [0], color='black', marker='x', linestyle='None', label=f'Detected Secondary Change Points')
+            ]
+
+            fig.legend(handles=legend_elements, loc='lower center', bbox_to_anchor=(0.5, offset_legend))
+            
+            plt.show()
+
+            return plt
+
+    def to_table(self):
+        line_by_line = []
+        for primary_change_point in self.primary_dd_result.change_points:
+            if primary_change_point in self.possible_drift_explanations:
+                for secondary_detector in self.possible_drift_explanations[primary_change_point]:
+                    result_dict = {
+                        'Primary Change Point': primary_change_point,
+                        'Detector': secondary_detector['detector'],
+                        'Secondary Change Point': secondary_detector['change_point'],
+                        'Lag': secondary_detector['lag']
+                    }
+                    line_by_line.append(result_dict)
+            else:
+                result_dict = {
+                        'Primary Change Point': primary_change_point,
+                        'Detector': '',
+                        'Secondary Change Point': '',
+                        'Lag': ''
+                    }
+                line_by_line.append(result_dict)
+        result_df = pd.DataFrame(line_by_line)
+        return result_df

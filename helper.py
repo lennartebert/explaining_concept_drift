@@ -481,7 +481,7 @@ def perform_synthetic_experiments(experiment_name, configurations, input_path, r
     # get the true change points and true change point explanations
     true_change_points = get_change_points_maardji_et_al_2013(10000)
     number_relevant_attributes = 5
-    true_change_point_explanations = [(true_change_points[i], f'relevant_attribute_{i+1:02d}') for i in range(number_relevant_attributes)]
+    true_change_point_explanations = [(true_change_points[i], f'trace: relevant_attribute_{i+1:02d}') for i in range(number_relevant_attributes)]
     
     # load all event logs from the input path
     event_log_file_paths = get_all_files_in_dir(input_path, include_files_in_subdirs=True)
@@ -552,6 +552,23 @@ def perform_synthetic_experiments(experiment_name, configurations, input_path, r
             
             # write the configuration results to file
             append_config_results(results_path, event_log_file_path, configuration, result, compute_time, experiment_name)
+
+
+def get_attribute_values_around_cp(event_log, attribute_level, attribute_name, change_point, window_width = 200):
+    window_a_start = change_point-window_width+1
+    window_b_start = change_point + 1
+    # Analysis for feature 'Includes_subCases'
+    # compare two windows with this feature
+    print(f'Analysis of {attribute_level} attribute {attribute_name}')
+    window_generator = windowing.FixedWG(window_width, window_offset=window_b_start-window_a_start, slide_by=1)
+    window_a, window_b = next(window_generator.get_windows(event_log, start=window_a_start))
+    
+    feature_extractor = feature_extraction.AttributeFE(attribute_level=attribute_level, attribute_name=attribute_name)
+
+    features_window_a = feature_extractor.extract(window_a.log)
+    features_window_b = feature_extractor.extract(window_b.log)
+    
+    return (features_window_a, features_window_b)
 
 
 # def save_experiment_results(experiment_name,

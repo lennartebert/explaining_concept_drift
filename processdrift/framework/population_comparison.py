@@ -42,7 +42,15 @@ class KSTestPC(PopulationComparer):
         Returns:
             P-value of KS test.
         """
-        test_statistics, p_value = scipy.stats.kstest(population_1, population_2)
+        # The populations can hold None values. These need to be filtered out.
+        pop_1_no_nan = [sample for sample in population_1 if sample is not None]
+        pop_2_no_nan = [sample for sample in population_2 if sample is not None]
+
+        # return None if either population 1 or population 2 has no samples that are not None
+        if len(pop_1_no_nan) == 0 or len(pop_2_no_nan) == 0:
+            return None
+
+        test_statistics, p_value = scipy.stats.kstest(pop_1_no_nan, pop_2_no_nan)
         return p_value
 
 

@@ -4,6 +4,8 @@
 import pandas as pd
 import numpy as np
 import subprocess
+import matplotlib.pyplot as plt
+from matplotlib import lines
 
 from abc import ABC, abstractmethod
 
@@ -26,6 +28,11 @@ class DriftDetector(ABC):
         Returns:
             A DriftDetectionResult object with a change series and the change points.
         """
+    
+    @property
+    @abstractmethod
+    def name(self):
+        pass
 
 class HypothesisTestDD(DriftDetector):
     """The drift detector gets a feature's change over time and can retrieve the according change points.
@@ -75,7 +82,7 @@ class HypothesisTestDD(DriftDetector):
         # get the change points
         change_points = self.change_point_extractor.get_change_points(change_series)
 
-        result = DriftDetectionResult(change_points=change_points, change_series=change_series)
+        result = DriftDetectionResult(name=self.name, change_points=change_points, change_series=change_series)
 
         return result
 
@@ -119,11 +126,11 @@ class HypothesisTestDD(DriftDetector):
                 # update the last end of the change point window
                 last_end_change_point_window = end_change_point_window
                 
-                window_generator_start = max(0, start_change_point_window-2*self.window_generator.window_size)
+                window_generator_start = max(0, start_change_point_window-2*self.window_generator.window_size+1)
 
                 # get windows for comparison
                 for window_a, window_b in self.window_generator.get_windows(event_log, start=window_generator_start):
-                    if window_b.end > end_change_point_window: break 
+                    if window_b.end > end_change_point_window: break
 
                     # get features for each window
                     features_window_a = self.feature_extractor.extract(window_a.log)
@@ -193,7 +200,7 @@ class ProDriftDD(DriftDetector):
         # get the change series
         change_series = self._get_change_series(event_log, change_points)
         
-        result = DriftDetectionResult(change_points=change_points, change_series=change_series)
+        result = DriftDetectionResult(name=self.name, change_points=change_points, change_series=change_series)
 
         return result
 
@@ -258,6 +265,10 @@ class ProDriftDD(DriftDetector):
                     change_points.append(int(trace_number))
 
             return change_points
+    
+    @property
+    def name(self):
+        return 'ProDrift Drift Detector'
 
 class TrueKnownDD(DriftDetector):
     """A drift detector to be used if the true change points are known.
@@ -275,13 +286,12 @@ class TrueKnownDD(DriftDetector):
         self.window_generator = None
         self.population_comparer = None
         self.threshold = None
-        self._name = 'Drift Detector True Known'
-    
+
     def get_changes(self, event_log, around_change_points=None, max_distance=None, unit_of_measure='trace'):
         # get the change series
         change_series = self._get_change_series(event_log)
         
-        result = DriftDetectionResult(change_points=self.change_points, change_series=change_series)
+        result = DriftDetectionResult(name=self.name, change_points=self.change_points, change_series=change_series)
         return result
     
     def _get_change_series(self, event_log):
@@ -313,16 +323,83 @@ class TrueKnownDD(DriftDetector):
             List of change points.
         """
         return self.change_points
+    
+    @property
+    def name(self):
+        return 'True Known Drift Detector'
 
 
 class DriftDetectionResult():
     """Results object for the change point detector."""
-    def __init__(self, change_points=None, change_series=None):
+    def __init__(self, name=None, change_points=None, change_series=None):
+        self.name = name
         self.change_points = change_points
         self.change_series = change_series
     
+    def plot(self, primary_change_points=None, threshold=None, secondary_change_points=None, start=None, end=None, ylabel='p-value', offset_legend = -0.87):
+        plt.figure(dpi=200, figsize = (4,2))
+
+        # get start and end of change series if desired
+        selected_change_series = self.change_series
+        if start is not None and end is not None:
+            selected_change_series = selected_change_series.loc[start:end]
+        elif start is not None and end is None:
+            selected_change_series = selected_change_series.loc[start:]
+        elif start is None and end is not None:
+            selected_change_series = selected_change_series.loc[:end]
+
+        plt.plot(selected_change_series, color='blue', 
+                            marker=".", linewidth=0.75, markersize=1,
+                            label=f"p-value")
+
+        # plot the primary change points if some where defined
+        if primary_change_points is not None:
+            # plot the change points by a red line
+            for pcp in primary_change_points:
+                plt.axvline(x=pcp, color='red', linewidth=1)
+
+        # plot the secondary change points if some where defined
+        if secondary_change_points is not None:
+            # plot the secondary change points with crosses
+            x = secondary_change_points
+            # check if there were secondary change points
+            if x is not None:
+                y = list(selected_change_series.loc[secondary_change_points])
+                plt.scatter(x=x, 
+                    y=y,
+                    marker='x',
+                    color='black'
+                )
+        
+        # plot the threshold as a grey line
+        if threshold is not None:
+            plt.axhline(y=threshold, color='grey', linewidth=1)
+
+        plt.ylabel(ylabel)
+        plt.xlabel('traces')
+        plt.title(f'{self.name}')
+
+        plt.ylim(-0.01, 1.1)
+        plt.xlim(min(selected_change_series.index) - 10, max(selected_change_series.index) + 10)
+
+        # create the legend
+        legend_elements = []
+        if primary_change_points is not None:
+            legend_elements.append(lines.Line2D([0], [0], color='red', linestyle='solid', label='Primary Change Points'))
+        
+        legend_elements.append(lines.Line2D([0], [0], color='blue', marker=".", linewidth=0.75, markersize=1, label='Secondary Change Series'))
+
+        if threshold is not None:
+            legend_elements.append(lines.Line2D([0], [0], color='grey', linewidth=1, label=f'Threshold'))
+
+        if secondary_change_points is not None:
+            legend_elements.append(lines.Line2D([0], [0], color='black', marker='x', linestyle='None', label=f'Detected Secondary Change Points'))
+
+        plt.legend(handles=legend_elements, loc='lower center', bbox_to_anchor=(0.5, offset_legend))
+    
     def __repr__(self):
-        result = f'Change points: {self.change_points}'
+        result = f'Results for Drift Detector {self.name}:'
+        result = f'{result}\nChange points: {self.change_points}'
         if self.change_series is not None:
             result = f'{result}\nHas a change series.'
         else:
