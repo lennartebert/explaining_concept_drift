@@ -1,9 +1,10 @@
-trace clustering ranking.ipynb
-data/data_dict.json
+#### Custom .gitignore
+pm4py-concept-drift/*
+ProDrift2.5/*
 results/*
 profile.txt
 
-# Standard github Python .gitignore
+#### Standard github Python .gitignore
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
