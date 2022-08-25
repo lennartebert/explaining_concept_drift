@@ -1,4 +1,4 @@
-"""This module serves to evaluate drift explainers and drift detectors.
+"""Module to evaluate drift explainers and drift detectors.
 """
 
 
@@ -75,10 +75,12 @@ def evaluate_explanations(true_change_explanations, detected_change_explanations
 
     return evaluation_result
 
-# aggregate list of evaluation results TODO: docstring
-
 
 def aggregate_cp_explanation_results(results_list):
+    """Aggregate a list of evaluation results.
+
+    Aggregated evaluation results.    
+    """
     all_correct_detections = 0
     all_true_changes = 0
     all_detections = 0

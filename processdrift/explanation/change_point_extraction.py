@@ -1,4 +1,4 @@
-"""Module for the detecting change points from a time series of comparison measures.
+"""Module for detecting change points from a time series of comparison measures.
 """
 
 from abc import ABC, abstractmethod

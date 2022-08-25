@@ -1,4 +1,4 @@
-"""Module for the comparison of populations in the process mining concept drift explanation explanation.
+"""Module for comparing populations in the PrMmining concept drift explanation approach.
 """
 import math
 from abc import ABC, abstractmethod
@@ -234,8 +234,10 @@ def preprocess_get_normalized_contingency_table(pop_1_array, pop_2_array):
     Returns:
         Normalized contingency table as numpy array. Population 1 values in first row, population 2 values in second row.
     """
+
     contingency_table = preprocess_get_contingency_table(
         pop_1_array, pop_2_array)
     sum_of_rows = contingency_table.sum(axis=1)
     normalized_array = contingency_table / sum_of_rows[:, np.newaxis]
+
     return normalized_array

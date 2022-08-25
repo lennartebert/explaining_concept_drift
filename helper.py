@@ -297,7 +297,7 @@ def get_examples_of_event_attributes(event_log, number_examples, for_event_attri
 
 
 def get_examples_of_trace_attributes(event_log, number_examples, for_trace_attributes=None):
-        """Get examples of values for trace attributes.
+    """Get examples of values for trace attributes.
 
     Args:
         event_log: PM4Py event log.
@@ -308,8 +308,7 @@ def get_examples_of_trace_attributes(event_log, number_examples, for_trace_attri
         Dataframe with example values.
     """
     # sample some traces
-    sample_trace_numbers = np.random.choice(
-        range(len(event_log)), number_examples, replace=False)
+    sample_trace_numbers = np.random.choice(range(len(event_log)), number_examples, replace=False)
     sample_traces = [event_log[trace] for trace in sample_trace_numbers]
 
     # sample one event for each trace to add to the set of example event attributes
@@ -487,7 +486,7 @@ def get_attribute_values_around_cp(event_log, attribute_level, attribute_name, c
     feature_extractor = feature_extraction.AttributeFE(
         attribute_level=attribute_level, attribute_name=attribute_name)
 
-    features_window_a = feature_extractor.extract(window_a.log)
-    features_window_b = feature_extractor.extract(window_b.log)
+    features_window_a = feature_extractor.extract(window_a.event_log)
+    features_window_b = feature_extractor.extract(window_b.event_log)
 
     return (features_window_a, features_window_b)

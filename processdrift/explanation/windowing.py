@@ -1,4 +1,4 @@
-"""Module with functions to create windows of pm4py eventlogs.
+"""Module for creating windows of PM4Py event logs.
 """
 
 import datetime
@@ -11,20 +11,18 @@ from pm4py.objects.log.obj import EventLog
 
 
 class Window():
-    """Class to give context to a log window.
-
-    Provides with the window's event log, start of window and end of window.
+    """Class to hold a sub-event log with a defined start and end.
     """
 
-    def __init__(self, log, start, end):
+    def __init__(self, event_log, start, end):
         """Create a new window.
 
         Args:
-            log: Event log contained in this window.
+            event_log: Event log contained in this window.
             start: Start of this window.
             end: End of this window.
         """
-        self.log = log
+        self.event_log = event_log
         self.start = start
         self.end = end
 
@@ -34,11 +32,13 @@ class WindowGenerator(ABC):
     """
 
     @abstractmethod
-    def get_windows(self, event_log, around_trace=None, max_distance=None):
+    def get_windows(self, event_log, start=None, end=None):
         """Get windows from an event log. The window tuples are yielded for direct processing.
 
         Args:
-            event_log: pm4py event log to be partitioned in windows
+            event_log: PM4Py event log to be partitioned in windows
+            start: Start of window generation.
+            end: End of window generation.
         """
         pass
 
@@ -52,10 +52,13 @@ class FixedWG(WindowGenerator):
 
         Args:
             window_size: Size of each window as Python datetime.timedelta or trace number.
-            window_offset: Offset of windows defined as datetime.timedelta or trace number. If None, offsets by window_size (non-overlapping windows).
+            window_offset: Offset of windows defined as datetime.timedelta or trace number. If None, offsets by window_size 
+                (non-overlapping windows).
             slide_by: How much to slide between generated windows. Defaults to 1.
             window_type: 'trace' or 'time'. Whether the window is created based on time or count of traces.
-            inclusion_criteria: 'events', 'traces_intersecting', 'trace_contained'. Either return all events that take place in a window, all complete traces that have any event in the window or all complete traces that are fully contained in the window. Ignored if type is 'traces'.
+            inclusion_criteria: 'all_events', 'all_traces', 'all_complete_traces'. If window_type 'time' is selected, 
+                either return all events that take place in a window, all complete traces that have any event in the window 
+                or all complete traces that are fully contained in the window. Ignored if type is 'traces'.
         """
         # window size, type and inclusion criteria can be directly set
         self.window_size = window_size
@@ -97,8 +100,7 @@ class FixedWG(WindowGenerator):
                 end = event_log[-1][-1]['time:timestamp'].replace(tzinfo=None)
 
         window_a_start = start
-        window_a_end = window_a_start + self.window_size - \
-            1  # TODO check if this -1 is wrong
+        window_a_end = window_a_start + self.window_size - 1
         window_b_start = window_a_start + self.window_offset
         window_b_end = window_b_start + self.window_size - 1
 
@@ -109,17 +111,17 @@ class FixedWG(WindowGenerator):
             window_b_log = None
 
             if self.window_type == 'time':
-                if self.inclusion_criteria == 'events':
+                if self.inclusion_criteria == 'all_events':
                     window_a_log = timestamp_filter.apply_events(
                         event_log, window_a_start, window_a_end)
                     window_b_log = timestamp_filter.apply_events(
                         event_log, window_b_start, window_b_end)
-                elif self.inclusion_criteria == 'traces_contained':
+                elif self.inclusion_criteria == 'all_complete_traces':
                     window_a_log = timestamp_filter.filter_traces_contained(
                         event_log, window_a_start, window_a_end)
                     window_b_log = timestamp_filter.filter_traces_contained(
                         event_log, window_b_start, window_b_end)
-                elif self.inclusion_criteria == 'traces_intersecting':
+                elif self.inclusion_criteria == 'all_traces':
                     window_a_log = timestamp_filter.filter_traces_intersecting(
                         event_log, window_a_start, window_a_end)
                     window_b_log = timestamp_filter.filter_traces_intersecting(
@@ -171,10 +173,13 @@ class AdaptiveWG(FixedWG):
 
         Args:
             initial_window_size: Initial window size. Will increase/decrease adaptively. Python datetime.timedelta or trace number.
-            window_offset: Offset of windows defined as datetime.timedelta or trace number. If None, offsets by window_size (non-overlapping windows).
+            window_offset: Offset of windows defined as datetime.timedelta or trace number. If None, offsets by window_size 
+                (non-overlapping windows).
             slide_by: How much to slide between generated windows. Defaults to 1.
             window_type: 'trace' or 'time'. Whether the window is created based on time or count of traces.
-            inclusion_criteria: 'events', 'traces_intersecting', 'trace_contained'. Either return all events that take place in a window, all complete traces that have any event in the window or all complete traces that are fully contained in the window. Ignored if type is 'traces'.
+            inclusion_criteria: 'events', 'traces_intersecting', 'trace_contained'. Either return all events that take place in a 
+                window, all complete traces that have any event in the window or all complete traces that are fully contained in the 
+                window. Ignored if type is 'traces'.
             min_window_size: Minimum size of the adaptively set windows. Window sizes of smaller than 2 will not increase again.
         """
         super().__init__(initial_window_size, window_offset,

@@ -1,0 +1,12 @@
+pandas
+numpy
+seaborn
+matplotlib
+scipy
+ipykernel
+
+# python==3.10.4
+graphviz==0.20
+networkx==2.8
+opyenxes==0.3.0
+pm4py==2.2.27

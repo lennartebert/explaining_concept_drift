@@ -207,7 +207,9 @@ class DriftExplanationResult():
 
             # set the y axis so all changes in the data can be clearly seen
             plt.ylim(-0.1, 1.1)
-            plt.xlim(0, primary_change_series.index[-1])
+            # set the x-axis to cover
+            plt.xlim(left=0)
+
             ax.title.set_text(attribute_name)
 
             # give a y label to all plots in first column

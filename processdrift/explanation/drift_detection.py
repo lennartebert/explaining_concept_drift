@@ -151,9 +151,9 @@ class HypothesisTestDD(DriftDetector):
 
                     # get features for each window
                     features_window_a = self.feature_extractor.extract(
-                        window_a.log)
+                        window_a.event_log)
                     features_window_b = self.feature_extractor.extract(
-                        window_b.log)
+                        window_b.event_log)
 
                     # update window size for adaptive generator
                     if isinstance(self.window_generator, windowing.AdaptiveWG):
@@ -172,9 +172,9 @@ class HypothesisTestDD(DriftDetector):
             for window_a, window_b in self.window_generator.get_windows(event_log):
                 # get features for each window
                 features_window_a = self.feature_extractor.extract(
-                    window_a.log)
+                    window_a.event_log)
                 features_window_b = self.feature_extractor.extract(
-                    window_b.log)
+                    window_b.event_log)
 
                 # update window size for adaptive generator
                 if isinstance(self.window_generator, windowing.AdaptiveWG):
