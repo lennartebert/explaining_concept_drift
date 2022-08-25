@@ -1,31 +1,26 @@
 # imports
-import pm4py
-import json
-import os
-import pandas as pd
-import numpy as np
 import csv
-
-import numbers
-from operator import itemgetter
-from pm4py.util import xes_constants as xes
+import json
 import math
-
+import numbers
+import os
 import time
+from operator import itemgetter
 
+import numpy as np
+import pandas as pd
+import pm4py
 from opyenxes.data_in import XesXmlParser
 from opyenxes.data_out import XesXmlSerializer
-
-from processdrift import generate_attributes
-
 from pm4py.objects.log.importer.xes import importer as xes_importer
-from processdrift.framework import drift_detection
-from processdrift.framework import drift_explanation
-from processdrift.framework import feature_extraction
-from processdrift.framework import population_comparison
-from processdrift.framework import windowing
-from processdrift.framework import evaluation
-from processdrift.framework import change_point_extraction
+from pm4py.util import xes_constants as xes
+
+from processdrift import attribute_generation
+from processdrift.explanation import (change_point_extraction, drift_detection,
+                                      drift_explanation, evaluation,
+                                      feature_extraction,
+                                      population_comparison, windowing)
+
 
 def get_log(dataset_name):
     """Get the event log for a specified dataset.
@@ -222,7 +217,7 @@ def add_synthetic_attributes(input_file_path,
     opyenxes_log = opyenxes_read_xes(input_file_path)
     
     # add synthetic attributes to log
-    ag = generate_attributes.create_and_populate_attribute_generator(opyenxes_log, 
+    ag = attribute_generation.create_and_populate_attribute_generator(opyenxes_log, 
                                                                     change_points,
                                                                     count_relevant_attributes,
                                                                     count_irrelevant_attributes,

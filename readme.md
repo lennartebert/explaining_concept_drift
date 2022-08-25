@@ -1,7 +1,7 @@
-# Explainable Concept Drift Framework
+# Explainable Concept Drift explanation
 
 ## Data
-Synthetic and real-world datasets are used to validate the proposed framework.
+Synthetic and real-world datasets are used to validate the proposed explanation.
 
 Data is not shipped with this repository but can be downloaded online as instructed below. The pyhton script "unpack data.ipynb" helps with unpacking the data in the correct directory.
 
