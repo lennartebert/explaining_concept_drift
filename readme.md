@@ -17,7 +17,7 @@ Here are two options for installing the dependencies:
 ```
 
 ### 2. Download the Datasets
-Follow the instructions in the `notebook 01_Import and Preprocess Data` to download and unpack the datasets.
+Follow the instructions in the notebook `01_Import and Preprocess Data.ipynb` to download and unpack the datasets.
 
 ### 3. Download Apromore ProDrift 2.5
 Go to https://apromore.com/research-lab/ and download ProDrift 2.5.
