@@ -17,7 +17,7 @@ class DriftDetector(ABC):
     """The DriftDetector determines the change series and change points for a given event log."""
     @abstractmethod
     def get_changes(self, event_log, around_change_points=None, max_distance=None, unit_of_measure='trace'):
-        """Get drift points for an event log. All further detail is specified in the inheriting classes.
+        """Get the DriftDetectionResult for an event log. All further detail is specified in the inheriting classes.
 
         Args:
             event_log: A pm4py event log.
@@ -64,18 +64,23 @@ class HypothesisTestDD(DriftDetector):
             return self._name
 
     def get_changes(self, event_log, around_change_points=None, max_distance=None, unit_of_measure='trace'):
-        """Get drift points for an event log by comparing windows.
+        """Get the DriftDetectionResult for an event log through a hypothesis test based approach.
 
         The search for changes can be restricted to the area of max_distance around traces specified in a list.
 
         Args:
             event_log: A pm4py event log.
+            around_change_points: Only get changes at a maximum of max_distance around an array of change_points.
+            max_distance: Maximum distance of change to any change point.
             unit_of_measure: 'trace' or 'time'; Whether the change point and maximum distance are defined as timestamps or trace counts.
-
 
         Returns:
             A DriftDetectionResult object with a change series and the change points.
         """
+        if unit_of_measure == 'time':
+            # TODO implement time as unit of measure
+            raise NotImplementedError(
+                f'Unit of measure {unit_of_measure} not implemented.')
 
         # get the change series
         change_series = self._get_change_series(
@@ -93,10 +98,12 @@ class HypothesisTestDD(DriftDetector):
     def _get_change_series(self, event_log, around_change_points, max_distance, unit_of_measure='trace'):
         """Get the change over time from the event log.
 
+        The search for changes can be restricted to the area of max_distance around traces specified in a list.
+
         Args:
             event_log: A pm4py event log.
-            around_change_points: List of trace numbers. Only look at changes around traces.
-            max_distance: Maximum distance around each trace to look for a change.
+            around_change_points: Only get changes at a maximum of max_distance around an array of change_points.
+            max_distance: Maximum distance of change to any change point.
             unit_of_measure: 'trace' or 'time'; Whether the change point and maximum distance are defined as timestamps or trace counts.
 
         Returns:
@@ -187,7 +194,10 @@ class HypothesisTestDD(DriftDetector):
 
 
 class ProDriftDD(DriftDetector):
-    """Leverages ProDrift for drift detection purposes."""
+    """Uses Apromore ProDrift 2.5 for drift detection.
+
+    ProDrift 2.5 can be downloaded from: https://apromore.com/research-lab/.
+    """
 
     def __init__(self,
                  path_to_prodrift,
@@ -195,56 +205,51 @@ class ProDriftDD(DriftDetector):
                  window_size=200,
                  window_mode='adaptive',
                  detect_gradual_as_well=False):
+        """Create a new ProDrift Drift detector.
+
+        Args:
+            path_to_prodrift: File path to the ProDrift .jar file.
+            drift_detection_mechanism: Which ProDrift detection mechanism to use. Uses the runs feature drift detection by default.
+            window_size=200: Size of each window.
+            window_mode='adaptive': Whether fixed or adaptive windows are used.
+            detect_gradual_as_well: Should gradual drift be detected as well?        
+        """
         self.path_to_prodrift = path_to_prodrift
         self.drift_detection_mechanism = drift_detection_mechanism
         self.window_size = window_size
         self.window_mode = window_mode
         self.detect_gradual_as_well = detect_gradual_as_well
 
-    def get_changes(self, event_log, around_change_points=None, max_distance=None, unit_of_measure='trace'):
-        """Get changes in the selected feature from an event log.
-
-        The search for changes can be restricted to the area of max_distance around traces specified in a list.
+    def get_changes(self, event_log, around_change_points=None, max_distance=None, unit_of_measure=None):
+        """Get the DriftDetectionResult for an event log by running ProDrift.
 
         Args:
             event_log: A pm4py event log.
+            around_change_points: Not used.
+            max_distance: Not used.
+            unit_of_measure: 'trace' or 'time'; Not used.
 
         Returns:
-            Dictionary with change points and change series: {change_points: [...], change_series: pandas.Series}
+            A DriftDetectionResult object with the change points.
         """
 
         # get the change points
         change_points = self._get_change_points(event_log)
 
-        # get the change series
-        change_series = self._get_change_series(event_log, change_points)
-
         result = DriftDetectionResult(
-            name=self.name, change_points=change_points, change_series=change_series)
+            name=self.name, change_points=change_points, change_series=None)
 
         return result
 
-    # TODO diverging implementation from derived class!
-    def _get_change_series(self, event_log, change_points):
-        # For the ProDrift drift detector, we do not have the scalar value of the change measure.
-        # Therefore, the change series is considered always 1, as long as there is no change point detected.
-
-        # get the number of traces in the log
-        number_traces = len(event_log)
-
-        # create the numpy array with all 1 values
-        change_series_array = np.ones((number_traces,), dtype=int)
-
-        # replace each one with a 0 at the change point
-        for change_point in change_points:
-            change_series_array[change_point] = 0
-
-        # get as pandas series
-        change_series = pd.Series(change_series_array)
-
-        return change_series
-
     def _get_change_points(self, event_log):
+        """Use ProDrift to get the change points from an event log.
+
+        Args:
+            event_log: A PM4Py event log.
+
+        Returns:
+            List of change points.
+        """
         # save event log to temporary file
         import os
         import tempfile
@@ -298,48 +303,33 @@ class ProDriftDD(DriftDetector):
 class TrueKnownDD(DriftDetector):
     """A drift detector to be used if the true change points are known.
 
-    Will always return 100% accurate results
+    Will always return 100% accurate results.
     """
 
     def __init__(self, change_points):
         """Create a new drift detector and supply strategies for feature extraction, window generation and population comparison.
 
         Args:
-            change_points: Dictionary with drift points
+            change_points: List of change points.
         """
         self.change_points = change_points
-        self.feature_extractor = None
-        self.window_generator = None
-        self.population_comparer = None
-        self.threshold = None
 
-    def get_changes(self, event_log, around_change_points=None, max_distance=None, unit_of_measure='trace'):
-        # get the change series
-        change_series = self._get_change_series(event_log)
-
-        result = DriftDetectionResult(
-            name=self.name, change_points=self.change_points, change_series=change_series)
-        return result
-
-    def _get_change_series(self, event_log):
-        """Get the change over time from the known drift points.
+    def get_changes(self, event_log, around_change_points=None, max_distance=None, unit_of_measure=None):
+        """Get the DriftDetectionResult from a pre-specified change point list.
 
         Args:
             event_log: A pm4py event log.
+            around_change_points: Not used.
+            max_distance: Not used.
+            unit_of_measure: 'trace' or 'time'; Not used.
 
         Returns:
-            The comparison result over time.
+            A DriftDetectionResult object with a the change points.
         """
 
-        # start by populating the series with 0 values
-        number_traces = len(event_log)
-        change_series = pd.Series(
-            data=[1] * number_traces, index=range(number_traces))
-
-        # now insert the changepoints
-        change_series.loc[self.change_points] = 0
-
-        return change_series
+        result = DriftDetectionResult(
+            name=self.name, change_points=self.change_points, change_series=None)
+        return result
 
     def _get_change_points(self, event_log):
         """Get the change points as presented when initialized.
@@ -361,12 +351,33 @@ class DriftDetectionResult():
     """Results object for the change point detector."""
 
     def __init__(self, name=None, change_points=None, change_series=None):
+        """The result of running a drift detector.
+
+        Args:
+            name: Name of the drift detector.
+            change_points: List of change points.
+            change_series: Result series from window comparison.
+        """
         self.name = name
         self.change_points = change_points
         self.change_series = change_series
 
-    def plot(self, primary_change_points=None, threshold=None, secondary_change_points=None, start=None, end=None, ylabel='p-value', offset_legend=-0.87):
-        plt.figure(dpi=200, figsize=(4, 2))
+    def plot(self, primary_change_points=None, threshold=None, start=None, end=None, offset_legend=-0.87, ylabel='p-value'):
+        """
+        Plots the drift detection result
+
+        Args:
+            primary_change_points: Optional; Plot the primary change points. Specify as list of trace counts.
+            threshold: Optional; Show a threshold line. Specify the threshold value.
+            start: Trace number where to start the plot.
+            end: Trace number where to end the plot.
+            offset_legend: Vertical offset of the plot's legend.
+            ylabel: Label of y-axis.
+
+        Returns:
+            Plot of drift detection result.
+        """
+        plt.figure(dpi=300, figsize=(4, 2))
 
         # get start and end of change series if desired
         selected_change_series = self.change_series
@@ -388,12 +399,12 @@ class DriftDetectionResult():
                 plt.axvline(x=pcp, color='red', linewidth=1)
 
         # plot the secondary change points if some where defined
-        if secondary_change_points is not None:
+        if self.change_points is not None:
             # plot the secondary change points with crosses
-            x = secondary_change_points
+            x = self.change_points
             # check if there were secondary change points
             if x is not None:
-                y = list(selected_change_series.loc[secondary_change_points])
+                y = list(selected_change_series.loc[self.change_points])
                 plt.scatter(x=x,
                             y=y,
                             marker='x',
@@ -425,7 +436,7 @@ class DriftDetectionResult():
             legend_elements.append(lines.Line2D(
                 [0], [0], color='grey', linewidth=1, label=f'Threshold'))
 
-        if secondary_change_points is not None:
+        if self.change_points is not None:
             legend_elements.append(lines.Line2D(
                 [0], [0], color='black', marker='x', linestyle='None', label=f'Detected Secondary Change Points'))
 
@@ -446,11 +457,10 @@ def get_attribute_drift_detectors(attribute_level_types, window_generator, chang
     """Factory function to get attribute drift detectors for all trace level attributes in an event log.
 
     Args:
-        event_log: A pm4py event log.
-        attributes_and_types: List of triplets of attributes, attribute level and type.
+        attribute_level_types:  List of triplets of attribute name, attribute level and type.
         window_generator: A windowing.WindowGenerator() to know which windowing strategy to use.
-        pupulation_comparer: A pop_comparison.PopComparer() to know how to compare the populations.
         change_point_extractor: A change_detection.ChangePointExtractor() to get change points from the change series.
+        min_samples_per_test: Minimum number of samples for each observed attribute value for hypothesis tests.
 
     Returns:
         List of drift detectors, one for each attribute.

@@ -9,7 +9,7 @@ from matplotlib import gridspec, lines
 
 
 class DriftExplainer():
-    """The process mining concept drift explainer identifies drift in event logs and returns the secondary features which also showed drift behavior. The drift explainer is used as assistence for manual root cause analysis.
+    """The process mining concept drift explainer identifies drift in event logs and returns the secondary features which also showed drift behavior. 
     """
 
     def __init__(self, primary_drift_detector, secondary_drift_detectors):
@@ -26,7 +26,7 @@ class DriftExplainer():
         """Gets a drift explainer results object with the possible change explanations and observed changes in the primary and secondary detectors.
 
         Args:
-            event_log: A pm4py event log.
+            event_log: A PM4py event log.
             max_distance: Maximum distance between a primary and secondary change point so that the secondary change point is evaluated.
 
         Returns:
@@ -61,7 +61,12 @@ class DriftExplainer():
 
     def _get_possible_drift_explanations(self, primary_change_points, secondary_dd_result_dictionary, max_distance):
         """
-        TODO: Complete docstring
+        Gets possible drift explanations from primary drift points and detected secondary drifts.
+
+        Args:
+            primary_change_points: Change points in the primary perspective.
+            secondary_dd_result_dictionary: Secondary drift detection result dictionary.
+            max_distance: Maximum distance around primary change points for which a secondary change point can be observed.
 
         Returns:
             (primary_change_points, change_point_explanations): The primary change points and explanations for each.
@@ -113,6 +118,13 @@ class DriftExplanationResult():
     """Results object for the drift explanations."""
 
     def __init__(self, primary_dd_result, secondary_dd_result_dictionary, possible_drift_explanations):
+        """Create a drift explanation result object.
+
+        Args:
+            primary_dd_result: Primary drift detection result dictionary.
+            secondary_dd_result_dictionary: Secondary drift result dictionary.
+            possible_drift_explanations: List of possible primary change explanations.     
+        """
         self.primary_dd_result = primary_dd_result
         self.secondary_dd_result_dictionary = secondary_dd_result_dictionary
         self.possible_drift_explanations = possible_drift_explanations
@@ -131,6 +143,7 @@ class DriftExplanationResult():
             plot_annotations: Whether or not to plot annotations for each change point.
             threshold: Value or p-value threshold.
             offset_legend: Vertical offset of the plot's legend.
+            ylabel: Label for the y axis.
 
         Returns:
             Plot.
@@ -231,6 +244,8 @@ class DriftExplanationResult():
         return plt
 
     def to_table(self):
+        """Return the drift explanations as a dataframe.        
+        """
         line_by_line = []
         for primary_change_point in self.primary_dd_result.change_points:
             if primary_change_point in self.possible_drift_explanations:
