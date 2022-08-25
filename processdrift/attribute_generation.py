@@ -87,7 +87,7 @@ class AttributeGenerator:
 
         # create a deep copy of the event log
         opyenxes_event_log = opyenxes_event_log.clone()
-        
+
         length = len(opyenxes_event_log)
 
         for attribute in self.attributes_to_generate:

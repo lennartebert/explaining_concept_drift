@@ -1,6 +1,7 @@
 """This module serves to evaluate drift explainers and drift detectors.
 """
 
+
 def evaluate_explanations(true_change_explanations, detected_change_explanations, max_distance=0):
     """Get the precision, recall, f1 and lags for lists of change explanations.
 
@@ -35,17 +36,17 @@ def evaluate_explanations(true_change_explanations, detected_change_explanations
             # check if detected change point is within max_distance to detected change point
             # and whether the correct attribute was identified
             if abs(true_change_point - detected_change_point) <= max_distance \
-                and true_change_attribute == detected_change_attribute:
+                    and true_change_attribute == detected_change_attribute:
                 number_of_correct_detections += 1
                 lags.append(detected_change_point - true_change_point)
 
                 # we can break here because the detected change points have been sorted
                 break
-    
+
     precision = None
     if number_of_detections > 0:
         precision = number_of_correct_detections / number_of_detections
-    
+
     recall = None
     if number_of_true_changes > 0:
         recall = number_of_correct_detections / number_of_true_changes
@@ -54,8 +55,8 @@ def evaluate_explanations(true_change_explanations, detected_change_explanations
     # only calcualte f1 if precision and recall are both > 0
     f1_score = None
     if (recall is not None) and (precision is not None) and (recall > 0) and (precision > 0):
-        f1_score =  2 / ((1/recall) + (1/precision))
-    
+        f1_score = 2 / ((1/recall) + (1/precision))
+
     # only calculate the mean lag if there where any lags
     mean_lag = None
     if len(lags) >= 1:
@@ -75,6 +76,8 @@ def evaluate_explanations(true_change_explanations, detected_change_explanations
     return evaluation_result
 
 # aggregate list of evaluation results TODO: docstring
+
+
 def aggregate_cp_explanation_results(results_list):
     all_correct_detections = 0
     all_true_changes = 0
@@ -95,7 +98,7 @@ def aggregate_cp_explanation_results(results_list):
     precision = None
     if all_detections > 0:
         precision = all_correct_detections / all_detections
-    
+
     recall = None
     if all_true_changes > 0:
         recall = all_correct_detections / all_true_changes
@@ -104,8 +107,8 @@ def aggregate_cp_explanation_results(results_list):
     # only calcualte f1 if precision and recall are both > 0
     f1_score = None
     if (recall is not None) and (precision is not None) and (recall > 0) and (precision > 0):
-        f1_score =  2 / ((1/recall) + (1/precision))
-    
+        f1_score = 2 / ((1/recall) + (1/precision))
+
     # only calculate the mean lag if there where any lags
     mean_lag = None
     if len(all_lags) >= 1:
@@ -122,8 +125,9 @@ def aggregate_cp_explanation_results(results_list):
         'lags': all_lags,
         'number_experiments': all_number_experiments
     }
-    
+
     return evaluation_result
+
 
 def evaluate_single_detector(true_change_points, detected_change_points, max_distance=0):
     """Get the precision, recall, f1 and lags for list of true change points.
@@ -164,7 +168,7 @@ def evaluate_single_detector(true_change_points, detected_change_points, max_dis
     recall = number_of_correct_detections / number_of_true_changes
 
     # get the f1 score (harmonic mean of recall and precision)
-    f1_score =  2 / ((1/recall) + (1/precision))
+    f1_score = 2 / ((1/recall) + (1/precision))
     mean_lag = sum(lags) / len(lags)
 
     evaluation_result = {
