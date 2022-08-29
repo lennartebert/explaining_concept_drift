@@ -206,10 +206,10 @@ def get_relationship_type_counts(log, direction='followed_by', activity_name_fie
     activity_occurence_counts = _get_activity_occurence_counts(traces)
     sna_relationships = _get_sna_relationships(
         causality_counts, activity_occurence_counts)
-    return _get_relationship_type_counts(sna_relationships)
+    return _get_relation_type_counts(sna_relationships)
 
 
-def get_bi_directional_relationship_type_counts(log, activity_name_field='concept:name'):
+def get_bi_directional_relation_type_counts(log, activity_name_field='concept:name'):
     """Gets the relation type counts per activity.
 
     Args:
@@ -229,7 +229,7 @@ def get_bi_directional_relationship_type_counts(log, activity_name_field='concep
         traces)
     sna_relationships_followed_by = _get_sna_relationships(
         causality_counts_followed_by, activity_occurence_counts_followed_by)
-    relationship_type_counts_followed_by = _get_relationship_type_counts(
+    relationship_type_counts_followed_by = _get_relation_type_counts(
         sna_relationships_followed_by)
 
     # get the type relationship type counts for the preceded by relationships
@@ -239,7 +239,7 @@ def get_bi_directional_relationship_type_counts(log, activity_name_field='concep
         traces)
     sna_relationships_preceded_by = _get_sna_relationships(
         causality_counts_preceded_by, activity_occurence_counts_preceded_by)
-    relationship_type_counts_preceded_by = _get_relationship_type_counts(
+    relationship_type_counts_preceded_by = _get_relation_type_counts(
         sna_relationships_preceded_by)
 
     # merge the followed/preceded by relationship type counts
@@ -254,7 +254,7 @@ def get_bi_directional_relationship_type_counts(log, activity_name_field='concep
     return relationship_type_counts
 
 
-def _get_relationship_type_counts(sna_dataframe):
+def _get_relation_type_counts(sna_dataframe):
     """Gets the relation type counts per activity.
 
     Args:
@@ -296,7 +296,7 @@ def get_relational_entropy(log, direction='followed_by', activity_name_field='co
     activity_occurence_counts = _get_activity_occurence_counts(traces)
     sna_relationships = _get_sna_relationships(
         causality_counts, activity_occurence_counts)
-    relationship_type_counts = _get_relationship_type_counts(sna_relationships)
+    relationship_type_counts = _get_relation_type_counts(sna_relationships)
     return _get_relational_entropy(relationship_type_counts)
 
 

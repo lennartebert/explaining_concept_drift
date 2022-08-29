@@ -109,17 +109,17 @@ class RelationalEntropyFE(FeatureExtractor):
         return feature_helpers.get_relational_entropy(event_log, direction=self.direction, activity_name_field=self.activity_name_field)
 
 
-class RelationshipTypesCountFE(FeatureExtractor):
-    """Extracts the relationship type counts for each activity. Introduced by Bose et al. 2011
+class RelationTypeCountsFE(FeatureExtractor):
+    """Extracts the relation type counts for each activity. Introduced by Bose et al. 2011.
     """
 
     def __init__(self):
-        """Initialize a feature extractor that extracts the relationship types count feature.
+        """Initialize a feature extractor that extracts the relation type counts feature.
         """
-        super().__init__('Relationship Types Count')
+        super().__init__('Relation Type Counts')
 
     def extract(self, event_log):
-        bi_directional_rtc = feature_helpers.get_bi_directional_relationship_type_counts(
+        bi_directional_rtc = feature_helpers.get_bi_directional_relation_type_counts(
             event_log)
         return bi_directional_rtc
 
