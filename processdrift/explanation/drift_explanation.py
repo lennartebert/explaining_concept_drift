@@ -2,6 +2,7 @@
 """
 
 import math
+import time
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -22,7 +23,7 @@ class DriftExplainer():
         self.primary_drift_detector = primary_drift_detector
         self.secondary_drift_detectors = secondary_drift_detectors
 
-    def get_possible_drift_explanations(self, event_log, max_distance=None):
+    def get_possible_drift_explanations(self, event_log, max_distance=None, print_timing=False):
         """Gets a drift explainer results object with the possible change explanations and observed changes in the primary and secondary detectors.
 
         Args:
@@ -32,7 +33,13 @@ class DriftExplainer():
         Returns:
             DriftExplanationResult with possible drift explanations and the results of the primary and secondary perspective drift detectors.
         """
+        time_start = time.time()
+        time_primary_detection_done = None
+        time_secondary_detection_done = None
+
         primary_dd_result = self.primary_drift_detector.get_changes(event_log)
+        if print_timing: time_primary_detection_done = time.time()
+
         primary_change_points = primary_dd_result.change_points
 
         # for each secondary drift detector, get changes
@@ -49,6 +56,8 @@ class DriftExplainer():
                     event_log)
 
             secondary_dd_result_dictionary[secondary_drift_detector.name] = secondary_dd_result
+        
+        if print_timing: time_secondary_detection_done = time.time()
 
         # get the possible drift point explanations
         possible_drift_explanations = self._get_possible_drift_explanations(
@@ -57,6 +66,19 @@ class DriftExplainer():
         # package results into results object
         result = DriftExplanationResult(
             primary_dd_result, secondary_dd_result_dictionary, possible_drift_explanations)
+
+        if print_timing:
+            time_end = time.time()
+            duration_primary = time_primary_detection_done - time_start
+            duration_secondary = time_secondary_detection_done - time_primary_detection_done
+            duration_additional = time_end - time_secondary_detection_done
+            duration_total = time_end - time_start
+            print(f'Finished Drift Explanation')
+            print(f'total time: {duration_total}s')
+            print(f'primary detection time: {duration_primary}s')
+            print(f'secondary detection time: {duration_secondary}s')
+            print(f'additional time: {duration_additional}s')
+
         return result
 
     def _get_possible_drift_explanations(self, primary_change_points, secondary_dd_result_dictionary, max_distance):
